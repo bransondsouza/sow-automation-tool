@@ -123,20 +123,23 @@ template, job status polling.
 
 **Phase 2 — Sheets tracker + Drive folders ✅ built**
 The same upload now also generates the 2-tab Sheet (Estimation & Resource
-Allocation, Project Tracking & Execution) right after the Slides deck, with
-the required columns and editable dropdown lists (statuses, stakeholder
-roster). Tasks on the Estimation tab use a WBS numbering scheme (`1`, `1.1`,
-`1.2.1`...) so a project can be freely restructured into sub-projects and
-steps of any depth — e.g. one SOW milestone becomes "Lesson 1" with its own
-steps underneath. An Apps Script the app installs on each spreadsheet adds a
-**Project Tracker Tools ▸ Generate Project Tracker** menu that (re)builds the
-Tracking tab from whatever's on the Estimation tab at that moment — any
-number of tasks, any nesting, in any order — while preserving Actual dates /
-Owner / Status already entered for tasks that still exist. An optional
-**Business Unit Head** field on the Upload form gets written into the sheet
-and the sheet is auto-shared with that person. A separate `/drive-folders`
-page lets anyone paste a parent folder link and a list of names to
-batch-create subfolders. See `SHEETS_TRACKER.md` for the full layout.
+Allocation, Project Tracking & Execution) right after the Slides deck. The
+Estimation tab groups tasks into **deliverables** (a name in column A starts
+a new deliverable; blank means "another task under the deliverable above"),
+with a checkbox that copies Deliverable 1's full task list into any new
+deliverable, and a live resource-allocation summary (to the right of the
+task table) that updates itself the instant a name is added to the Lists
+tab. An Apps Script the app installs on each spreadsheet adds a **Project
+Tracker Tools ▸ Generate Project Tracker** menu that builds the Tracking tab
+as a Deliverable × Task matrix — one row per deliverable, a repeating
+6-column block per task (Assigned To, Hours, Baseline/Plan/Actual Date,
+Status), plus a computed RAG status and Current Stage per deliverable that
+also update live as dates/status change — while preserving anything already
+entered for tasks that still exist. An optional **Business Unit Head** field
+on the Upload form gets written into the sheet and the sheet is auto-shared
+with that person. A separate `/drive-folders` page lets anyone paste a
+parent folder link and a list of names to batch-create subfolders. See
+`SHEETS_TRACKER.md` for the full layout.
 
 **Phase 3 — HTML Dashboard**
 A page where a user can add one or more tracker Sheet links; the app reads

@@ -1,116 +1,164 @@
 # How the generated Project Plan & Tracker works
 
 Every upload creates one new Google Sheet with three tabs, plus a small
-script attached to the file that adds a menu button. This document explains
-the layout, the hierarchy model, and exactly what that button does.
+script attached to the file that adds a menu button and a few automations.
+This document explains the deliverable/task model, the layout, and exactly
+what the button and its automations do.
+
+## The mental model: Deliverables and Tasks
+
+A project has one or more **deliverables** (e.g. "Lesson 1", "Module A",
+"Client Report v1" — whatever your projects call their outputs). Each
+deliverable is made up of the same kind of **tasks** (e.g. "Script Writing,"
+"Review," "QA"). Sheet 1 is where you define this; Sheet 2 turns it into a
+live tracking grid — one row per deliverable, one column-block per task.
 
 ## Tab 1: Estimation & Resource Allocation
 
 - **Row 1** — `Project Start Date` (cell B1), `Project End Date` (cell D1),
-  and `Business Unit Head` (cell F1, pre-filled if you entered one on the
-  Upload page). Project Start Date is what everything else calculates from.
-- **Row 4** — column headers; rows below are frozen-scroll so headers stay
-  visible. Columns:
-  - **WBS #** — a Work Breakdown Structure number: `1`, `2`, `3`... for
-    top-level items, `1.1`, `1.2` for things nested under item 1, `1.2.1`
-    for something nested under 1.2, and so on to any depth. This is how you
-    model "Lesson 1 has steps A, B, C" or "Sub-project 2 has its own
-    sub-project 2.1" — there's no separate hierarchy feature to learn, just
-    a numbering convention. **Type these as plain numbers with dots** — the
-    sheet is pre-formatted so `1.10` won't accidentally turn into `1.1`.
-  - **Task / Sub-Project / Step Name** — whatever that WBS item is.
-  - **Estimated Days Required** — fill this in on the *lowest-level* items
-    (the actual steps) that consume time. Parent/summary rows (anything with
-    children beneath it, like "Lesson 1") don't need their own estimate —
-    their dates get rolled up automatically from their children.
-  - **Estimated Effort (Hours)** and **Team Members Assigned** — same idea:
-    fill in per leaf task, comma-separated names for the team column.
-  - **Effort per Member (Hrs)** — a live formula: Estimated Effort ÷ number
-    of names in Team Members Assigned. Feeds the resource summary below.
-  - **Notes** — free text; pre-filled with SOW timing context where available.
-- **On generation**, this tab starts with one flat top-level row per
-  milestone the AI found in the SOW (WBS `1`, `2`, `3`...) plus 5 blank
-  buffer rows. The SOW doesn't know about your internal sub-project
-  structure, so **restructuring into a real hierarchy is a manual step**:
-  renumber/insert rows so related steps share a parent WBS prefix (e.g. turn
-  flat items 3, 4, 5 into `2` "Lesson 2", `2.1`, `2.2`, `2.3`). Insert rows
-  as needed — WBS numbers just need to sort sensibly, they don't need to be
-  contiguous.
-- **Resource Allocation Summary** (a few rows below the task table) — one
-  row per team member (seeded from the roster you typed in on the Upload
-  page, editable), each with a live formula summing that person's
-  "Effort per Member" across every task they're listed on.
+  and `Business Unit Head` (cell F1). Project Start Date is what every
+  deliverable's schedule cascades from. Click into either date cell and
+  Sheets pops up a calendar picker.
+- **Row 4** — column headers; rows below are frozen-scroll. Columns:
+  - **Deliverable Name** — type a name here to start a new deliverable.
+    **Leave it blank** on the rows below to mean "another task under the
+    same deliverable" — you don't repeat the name on every row.
+  - **Task Name** — one row per task.
+  - **Estimated Days Required** / **Estimated Effort (Hours)** — fill in
+    per task; these drive the schedule and the resource summary.
+  - **Team Members Assigned** — comma-separated names for that task.
+  - **Effort per Member (Hrs)** — live formula, Estimated Effort ÷ number of
+    names in Team Members Assigned.
+  - **Notes** — free text.
+  - **Copy Tasks from Deliverable 1** — a checkbox (see below).
+
+### Adding a second (third, fourth...) deliverable
+
+**Deliverable 1** is the template — fill it in completely: its name, and
+every one of its task rows with estimated days/effort/team.
+
+For every deliverable after that, you only need to type its name in a new
+row's **Deliverable Name** cell, then **tick the checkbox in column H** on
+that same row. The moment you check it:
+
+- All of Deliverable 1's tasks (names, estimated days, effort, team members)
+  get copied in as new rows under your new deliverable.
+- The checkbox resets itself to unchecked.
+- You can now edit any of the copied values if this deliverable's resourcing
+  is different — the copy is a starting point, not a link.
+
+The checkbox is pre-installed all the way down column H, so it's always
+ready the instant you type a new deliverable name — nothing needs to run
+first.
+
+### Resource Allocation Summary (columns J-K)
+
+This sits to the **right** of the task table (not below it) so it doesn't
+get pushed further down as you add more deliverables. It lists every name
+on the Lists tab's roster and totals their allocated hours across every
+task, on every deliverable, they're assigned to.
+
+**It updates itself automatically.** Add a name to the Lists tab's roster
+column and it appears here immediately — no regenerating, no re-running
+anything. This is a live spreadsheet formula (`FILTER`), not something the
+button builds.
 
 ## Tab 2: Project Tracking & Execution
 
-This tab starts **empty** (just a header and an instructional note) — it's
-populated entirely by the button described below, not by formulas, because
-with unlimited nesting and rows you can freely insert/reorder/delete, a
-fixed formula-per-row-number approach breaks. Values instead of formulas
-also means edits here (Actual dates, Owner, Status) are simple typing, not
-fighting a formula.
+This tab starts **empty** — it's built entirely by the button below, as a
+matrix:
+
+| Deliverable Name | *(7 spare columns)* | RAG | Current Stage | Task 1 block (6 cols) | Task 2 block (6 cols) | ... |
+|---|---|---|---|---|---|---|
+
+Each task's block has: **Assigned To** (dropdown, pre-filled from that
+task's Team Members on Sheet 1), **Hours Allocated** (optional, feeds a
+future resource-utilization chart — fine to leave blank), **Baseline Date**,
+**Plan Date**, **Actual Date** (all three with the calendar picker), and
+**Status** (dropdown).
 
 ### The "Generate Project Tracker" button
 
 Open the sheet and look for **Project Tracker Tools** in the menu bar (next
-to Help). Click it → **Generate Project Tracker**. What it does:
+to Help) → **Generate Project Tracker**. What it does:
 
-1. Reads every row on the Estimation tab that has both a WBS # and a Name
-   (blank buffer rows are skipped).
-2. Sorts them in proper WBS order (`1`, `1.2`, `1.10`, `2` — not
-   alphabetically, which would put `1.10` before `1.2`).
-3. Figures out which rows are "parents" (anything with a WBS # that other
-   rows are nested under).
-4. Calculates **Planned Start/End Date** for every leaf task by cascading
-   sequentially from the Project Start Date + each task's Estimated Days,
-   in WBS order. Parent rows get their date range **rolled up** from their
-   own children (earliest start, latest end) — so "Lesson 1" automatically
-   shows the span covering all of its steps.
-5. Writes one row per WBS item to this tab, indenting the name slightly per
-   nesting level so the hierarchy is visually readable.
-6. **Preserves your work**: if a WBS # already has a row on this tab with
-   Actual Start/End Date, Owner, or Status filled in, those values carry
-   over to the regenerated row — regenerating never throws away progress
-   you've logged, as long as the WBS # didn't change.
-7. Re-applies the Status dropdown, Stakeholder/Owner dropdown, and the
-   gray/yellow/green Status color-coding to exactly the new set of rows.
+1. Reads every deliverable and its tasks from the Estimation tab.
+2. Uses **Deliverable 1's task list, in order, as the column template** —
+   every deliverable's tasks line up against those same column positions.
+   (A deliverable with extra tasks beyond Deliverable 1's list gets extra
+   columns added; this is why sticking to the copy-checkbox workflow keeps
+   everything tidiest.)
+3. Calculates **Baseline Date** for every task by cascading sequentially
+   from the Project Start Date + that task's own Estimated Days, task by
+   task, within each deliverable.
+4. Computes **RAG** and **Current Stage** for each deliverable (see below).
+5. **Preserves your work**: Assigned To, Hours Allocated, Plan Date, Actual
+   Date, and Status are kept for any (deliverable, task name) pair that
+   still exists — regenerating never throws away progress you've logged.
+6. Colors the Status cells and the RAG cell automatically.
 
-Run it again any time you restructure or add tasks on the Estimation tab —
-that's the whole workflow: edit Sheet 1, click the button, Sheet 2 updates.
+Run it again any time you add deliverables or tasks on the Estimation tab.
 
-**First-time authorization:** the very first time anyone clicks this button,
-Google shows its own "Authorization required" popup — separate from signing
-into the web app. Click **Review permissions** → pick the account → **Allow**.
-This is standard for any Google Apps Script and only happens once per person
-per sheet.
+**First-time authorization:** the first time anyone clicks this button (or
+triggers any of the automations below), Google shows its own "Authorization
+required" popup — separate from signing into the web app. Click **Review
+permissions** → pick the account → **Allow**. Standard for any Apps Script,
+only happens once per person per sheet.
 
 **If the menu doesn't appear at all:** the app couldn't install the script
-automatically for this sheet (shown as a warning on the upload status page).
-This is almost always either the Apps Script API not being enabled in Google
-Cloud, or that employee's personal Apps Script API access being off — see
+automatically (shown as a warning on the upload status page) — almost
+always the Apps Script API not being enabled in Google Cloud, or that
+employee's personal Apps Script API access being off. See
 `DEPLOYMENT_GUIDE.md`.
+
+### RAG logic (Red / Amber / Green / Gray)
+
+Computed per deliverable, from all of its tasks:
+
+- 🔴 **Red** — any task is overdue against its Baseline Date and not marked
+  Completed, or any task's Status starts with "Blocked."
+- 🟡 **Amber** — nothing overdue, but at least one task has drifted (its
+  Plan or Actual date is later than its Baseline Date) or is in progress.
+- 🟢 **Green** — every task is Completed.
+- ⚪ **Gray** — nothing has started yet.
+
+This isn't only computed at generate time — **editing any task's Baseline,
+Plan, Actual, or Status cell recomputes that row's RAG and Current Stage
+immediately**, live, without needing to click the button again.
+
+### Current Stage
+
+Reports the first task (in column order) that isn't yet Completed, as
+`"<Task Name> · <Status>"` — e.g. `"QA Review · WIP"`. Shows `"Done"` once
+every task is Completed.
+
+### A couple of built-in conveniences
+
+- **Auto Actual Date**: change any task's Status to something starting with
+  "Completed" and, if its Actual Date is still blank, today's date is
+  filled in automatically.
+- **Calendar picker**: click into any Baseline/Plan/Actual/Project date
+  cell and Sheets shows a date picker — no need to type dates by hand.
 
 ## Tab 3: Lists (hidden)
 
-Unhide it any time via *View → Show hidden sheets* in Google Sheets:
+Unhide it any time via *View → Show hidden sheets*:
 
-- **Column A** — Status options. Add a row (`On Hold`, `Blocked`, etc.) and
-  it's immediately selectable in the Status dropdown, up to row 31.
-- **Column B** — the team roster. Add or remove names and the Stakeholder /
-  Owner dropdown updates immediately, up to row 31.
-
-No code, no re-running anything — just edit the cells.
+- **Column A** — Status options (`YTS`, `WIP`, `Completed`, `Blocked`,
+  `On Hold` by default). Add a row and it's immediately selectable in every
+  Status dropdown on the Tracking tab — no regenerating needed.
+- **Column B** — the team roster. Add or remove names and both the
+  Assigned To dropdowns *and* the Resource Allocation Summary on Sheet 1
+  update immediately.
 
 ## Business Unit Head sharing
 
 If you entered a Business Unit Head name + email on the Upload page, the
 generated sheet is automatically shared with that email (view access) the
-moment it's created — they'll get Google's normal "shared with you"
-notification and can open it with their own Google login. The same email is
-what the Phase 3 dashboard will use to automatically find every project
-under a given BU Head.
+moment it's created.
 
 ## What's next (Phase 3)
 
-The dashboard will read this exact tab/column layout live, and will use the
-Business Unit Head field to auto-discover every tracker that head owns.
+The dashboard will read this exact Deliverable × Task matrix live, using RAG
+and Current Stage for at-a-glance health, and Hours Allocated + Assigned To
+for the resource-utilization chart.
