@@ -46,6 +46,17 @@ export interface DeliverableSnapshot {
 export type OverallRag = "Red" | "Amber" | "Gray" | "Green" | "Not Started";
 export type SchedulePace = "Ahead" | "On Pace" | "Behind" | "Unknown";
 
+export interface StatusCount {
+  status: string;
+  count: number;
+}
+
+export interface BurndownPoint {
+  date: string; // yyyy-mm-dd
+  idealPct: number;
+  actualPct: number;
+}
+
 export interface ProjectKpis {
   overallRag: OverallRag;
   totalTasks: number;
@@ -59,6 +70,8 @@ export interface ProjectKpis {
   schedulePace: SchedulePace;
   elapsedPct: number | null;
   resourceHours: { name: string; hours: number }[];
+  statusBreakdown: StatusCount[];
+  burndown: BurndownPoint[];
 }
 
 export interface ProjectSnapshot {
@@ -294,6 +307,17 @@ function computeKpis(deliverables: DeliverableSnapshot[], startDate: string, end
     .map(([name, hours]) => ({ name, hours: Math.round(hours * 10) / 10 }))
     .sort((a, b) => b.hours - a.hours);
 
+  const statusMap = new Map<string, number>();
+  allTasks.forEach((t) => {
+    const key = t.status || "Unknown";
+    statusMap.set(key, (statusMap.get(key) ?? 0) + 1);
+  });
+  const statusBreakdown = Array.from(statusMap.entries())
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const burndown = computeBurndown(allTasks, start, end);
+
   return {
     overallRag,
     totalTasks,
@@ -307,7 +331,58 @@ function computeKpis(deliverables: DeliverableSnapshot[], startDate: string, end
     schedulePace,
     elapsedPct,
     resourceHours,
+    statusBreakdown,
+    burndown,
   };
+}
+
+// Ideal-pace vs actual-completion series from Project Start to Project End —
+// the "burndown" (really a burn-UP, cumulative % complete) chart on the
+// dashboard. Sampled roughly weekly, capped at a sane number of points so a
+// multi-year project doesn't produce hundreds of them.
+function computeBurndown(allTasks: TaskSnapshot[], start: Date | null, end: Date | null): BurndownPoint[] {
+  const totalTasks = allTasks.length;
+  if (!start || !end || totalTasks === 0 || end.getTime() <= start.getTime()) return [];
+
+  const dayMs = 86400000;
+  const spanDays = Math.round((end.getTime() - start.getTime()) / dayMs);
+  if (spanDays <= 0) return [];
+
+  const maxPoints = 14;
+  const stepDays = Math.max(1, Math.ceil(spanDays / maxPoints));
+
+  const actualDates = allTasks
+    .map((t) => parseDateOnly(t.actual))
+    .filter((d): d is Date => d !== null)
+    .map((d) => d.getTime())
+    .sort((a, b) => a - b);
+
+  function completedByTime(timeMs: number): number {
+    // actualDates is sorted — count how many are <= timeMs.
+    let count = 0;
+    for (const t of actualDates) {
+      if (t <= timeMs) count++;
+      else break;
+    }
+    return count;
+  }
+
+  const points: BurndownPoint[] = [];
+  for (let d = 0; d <= spanDays; d += stepDays) {
+    const pointDate = addDays(start, d);
+    const idealPct = Math.round((d / spanDays) * 100);
+    const actualPct = Math.round((completedByTime(pointDate.getTime()) / totalTasks) * 100);
+    points.push({ date: pointDate.toISOString().slice(0, 10), idealPct, actualPct });
+  }
+
+  const lastPoint = points[points.length - 1];
+  const endStr = end.toISOString().slice(0, 10);
+  if (!lastPoint || lastPoint.date !== endStr) {
+    const actualPct = Math.round((completedByTime(end.getTime()) / totalTasks) * 100);
+    points.push({ date: endStr, idealPct: 100, actualPct });
+  }
+
+  return points;
 }
 
 // ─────────────────────────── Cross-project rollup ───────────────────────────

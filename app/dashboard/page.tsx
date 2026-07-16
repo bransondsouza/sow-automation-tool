@@ -1,10 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import type { ProjectSnapshot, RollupKpis, ProjectFetchError, OverallRag, SchedulePace } from "@/lib/dashboardData";
+import type {
+  ProjectSnapshot,
+  RollupKpis,
+  ProjectFetchError,
+  OverallRag,
+  SchedulePace,
+  StatusCount,
+  BurndownPoint,
+} from "@/lib/dashboardData";
 import type { DashboardLink } from "@/lib/types";
+import ChartCanvas from "./ChartCanvas";
+import DeliverableTimeline from "./DeliverableTimeline";
+
+const RAG_COLORS: Record<string, string> = {
+  Red: "#ef4444",
+  Amber: "#f59e0b",
+  Green: "#22c55e",
+  Gray: "#9ca3af",
+  "Not Started": "#cbd5e1",
+};
 
 function ragClass(rag: string): string {
   switch (rag) {
@@ -34,6 +52,16 @@ function paceClass(pace: SchedulePace): string {
   }
 }
 
+function statusColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s.startsWith("completed")) return "#22c55e";
+  if (s.startsWith("blocked")) return "#ef4444";
+  if (s.startsWith("wip")) return "#f59e0b";
+  if (s.startsWith("on hold")) return "#9ca3af";
+  if (s.startsWith("yts")) return "#cbd5e1";
+  return "#94a3b8";
+}
+
 function RagBadge({ label }: { label: string }) {
   return <span className={`rag-badge ${ragClass(label)}`}>{label}</span>;
 }
@@ -49,6 +77,121 @@ function KpiCard({ label, value, sub }: { label: string; value: React.ReactNode;
 }
 
 const RAG_ORDER: OverallRag[] = ["Red", "Amber", "Gray", "Green", "Not Started"];
+
+// ─────────────────────────── Chart data builders ───────────────────────────
+
+function buildRagDonut(deliverables: { rag: string }[]) {
+  const counts: Record<string, number> = {};
+  deliverables.forEach((d) => {
+    const key = d.rag || "Not Started";
+    counts[key] = (counts[key] ?? 0) + 1;
+  });
+  const labels = Object.keys(counts);
+  return {
+    labels,
+    datasets: [
+      {
+        data: labels.map((l) => counts[l]),
+        backgroundColor: labels.map((l) => RAG_COLORS[l] ?? "#cbd5e1"),
+        borderWidth: 0,
+      },
+    ],
+  };
+}
+
+function buildPortfolioRagDonut(ragCounts: Record<OverallRag, number>) {
+  const labels = RAG_ORDER.filter((r) => ragCounts[r] > 0);
+  return {
+    labels,
+    datasets: [
+      {
+        data: labels.map((l) => ragCounts[l]),
+        backgroundColor: labels.map((l) => RAG_COLORS[l] ?? "#cbd5e1"),
+        borderWidth: 0,
+      },
+    ],
+  };
+}
+
+function buildStatusBar(statusBreakdown: StatusCount[]) {
+  return {
+    labels: statusBreakdown.map((s) => s.status),
+    datasets: [
+      {
+        label: "Tasks",
+        data: statusBreakdown.map((s) => s.count),
+        backgroundColor: statusBreakdown.map((s) => statusColor(s.status)),
+        borderRadius: 4,
+      },
+    ],
+  };
+}
+
+function buildBurndown(points: BurndownPoint[]) {
+  return {
+    labels: points.map((p) => p.date),
+    datasets: [
+      {
+        label: "Ideal Pace",
+        data: points.map((p) => p.idealPct),
+        borderColor: "#94a3b8",
+        borderDash: [6, 4],
+        pointRadius: 0,
+        borderWidth: 2,
+        tension: 0,
+        fill: false,
+      },
+      {
+        label: "Actual",
+        data: points.map((p) => p.actualPct),
+        borderColor: "#2563eb",
+        backgroundColor: "rgba(37,99,235,0.12)",
+        pointRadius: 2,
+        borderWidth: 2,
+        tension: 0.2,
+        fill: true,
+      },
+    ],
+  };
+}
+
+function buildResourceBar(resourceHours: { name: string; hours: number }[]) {
+  const top = resourceHours.slice(0, 10);
+  return {
+    labels: top.map((r) => r.name),
+    datasets: [
+      {
+        label: "Hours Allocated",
+        data: top.map((r) => r.hours),
+        backgroundColor: "#2563eb",
+        borderRadius: 4,
+      },
+    ],
+  };
+}
+
+const horizontalBarOptions = {
+  indexAxis: "y" as const,
+  plugins: { legend: { display: false } },
+  scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+};
+
+const donutOptions = {
+  plugins: { legend: { position: "bottom" as const } },
+};
+
+const burndownOptions = {
+  plugins: { legend: { position: "bottom" as const } },
+  scales: {
+    y: {
+      min: 0,
+      max: 100,
+      ticks: { callback: (v: string | number) => `${v}%` },
+    },
+  },
+};
+
+// ────────────────────────────── Page ──────────────────────────────
 
 export default function DashboardPage() {
   const { data: session } = useSession();
@@ -69,6 +212,12 @@ export default function DashboardPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<string>("all");
+
+  // The setup panel (add-link / pull-by-BU-head forms) auto-collapses the
+  // first time the dashboard has data, so returning to it later shows just
+  // the tabs and widgets — it stays reachable via "Manage Projects."
+  const [manageOpen, setManageOpen] = useState(true);
+  const autoCollapsedRef = useRef(false);
 
   const linkIdBySheetId = useMemo(() => {
     const map = new Map<string, string>();
@@ -106,6 +255,13 @@ export default function DashboardPage() {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!loading && projects.length > 0 && !autoCollapsedRef.current) {
+      setManageOpen(false);
+      autoCollapsedRef.current = true;
+    }
+  }, [loading, projects.length]);
 
   async function handleAddLink(e: React.FormEvent) {
     e.preventDefault();
@@ -171,85 +327,93 @@ export default function DashboardPage() {
         <Link href="/upload">← Back to Upload</Link>
       </div>
 
-      <div className="card">
-        <h1>Project Dashboard</h1>
-        <p className="subtitle">
-          Add tracker sheets by link, or pull in every project under a Business Unit Head. Everything
-          you add here is saved to your account and read live from Google Sheets each time you open it.
-        </p>
+      <div className="dashboard-header-row">
+        <h1 style={{ marginBottom: 0 }}>Project Dashboard</h1>
+        <button type="button" className="btn-secondary" onClick={() => setManageOpen((v) => !v)} style={{ margin: 0 }}>
+          {manageOpen ? "Hide setup" : "+ Manage Projects"}
+        </button>
+      </div>
 
-        <div className="dashboard-toolbar">
-          <form onSubmit={handleAddLink} className="toolbar-form">
-            <label htmlFor="addLinkValue">Add a project by sheet link</label>
-            <div className="inline-form-row">
-              <input
-                id="addLinkValue"
-                type="text"
-                placeholder="Paste a Project Plan & Tracker sheet link"
-                value={addLinkValue}
-                onChange={(e) => setAddLinkValue(e.target.value)}
-              />
-            </div>
-            <div className="inline-form-row" style={{ marginTop: 8 }}>
-              <input
-                type="text"
-                placeholder="Label (optional)"
-                value={addLabelValue}
-                onChange={(e) => setAddLabelValue(e.target.value)}
-              />
-              <button type="submit" disabled={submittingLink} style={{ marginTop: 0 }}>
-                {submittingLink ? "Adding…" : "Add"}
+      {manageOpen && (
+        <div className="card">
+          <p className="subtitle">
+            Add tracker sheets by link, or pull in every project under a Business Unit Head. Everything
+            you add here is saved to your account and read live from Google Sheets each time you open it.
+          </p>
+
+          <div className="dashboard-toolbar">
+            <form onSubmit={handleAddLink} className="toolbar-form">
+              <label htmlFor="addLinkValue">Add a project by sheet link</label>
+              <div className="inline-form-row">
+                <input
+                  id="addLinkValue"
+                  type="text"
+                  placeholder="Paste a Project Plan & Tracker sheet link"
+                  value={addLinkValue}
+                  onChange={(e) => setAddLinkValue(e.target.value)}
+                />
+              </div>
+              <div className="inline-form-row" style={{ marginTop: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Label (optional)"
+                  value={addLabelValue}
+                  onChange={(e) => setAddLabelValue(e.target.value)}
+                />
+                <button type="submit" disabled={submittingLink} style={{ marginTop: 0 }}>
+                  {submittingLink ? "Adding…" : "Add"}
+                </button>
+              </div>
+            </form>
+
+            <form onSubmit={handlePullByBuHead} className="toolbar-form">
+              <label htmlFor="buHeadValue">Pull all projects under a Business Unit Head</label>
+              <div className="inline-form-row">
+                <input
+                  id="buHeadValue"
+                  type="text"
+                  placeholder="Name or email, e.g. dana.ortiz@company.com"
+                  value={buHeadValue}
+                  onChange={(e) => setBuHeadValue(e.target.value)}
+                />
+                <button type="submit" disabled={pullingBuHead} style={{ marginTop: 0 }}>
+                  {pullingBuHead ? "Pulling…" : "Pull"}
+                </button>
+              </div>
+              <p className="hint">
+                Only finds sheets that were shared with you — auto-shared automatically if you're the BU
+                Head named on the Upload form, otherwise ask the sheet owner to share it with you first.
+              </p>
+            </form>
+
+            <div>
+              <button type="button" onClick={() => loadAll()} disabled={refreshing} className="btn-secondary">
+                {refreshing ? "Refreshing…" : "Refresh"}
               </button>
             </div>
-          </form>
-
-          <form onSubmit={handlePullByBuHead} className="toolbar-form">
-            <label htmlFor="buHeadValue">Pull all projects under a Business Unit Head</label>
-            <div className="inline-form-row">
-              <input
-                id="buHeadValue"
-                type="text"
-                placeholder="Name or email, e.g. dana.ortiz@company.com"
-                value={buHeadValue}
-                onChange={(e) => setBuHeadValue(e.target.value)}
-              />
-              <button type="submit" disabled={pullingBuHead} style={{ marginTop: 0 }}>
-                {pullingBuHead ? "Pulling…" : "Pull"}
-              </button>
-            </div>
-            <p className="hint">
-              Only finds sheets that were shared with you — auto-shared automatically if you're the BU
-              Head named on the Upload form, otherwise ask the sheet owner to share it with you first.
-            </p>
-          </form>
-
-          <div>
-            <button type="button" onClick={() => loadAll()} disabled={refreshing} className="btn-secondary">
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </button>
           </div>
         </div>
+      )}
 
-        {formError && <div className="error-box">{formError}</div>}
+      {formError && <div className="error-box">{formError}</div>}
 
-        {errors.length > 0 && (
-          <div className="error-box">
-            <strong>
-              {errors.length} saved project{errors.length === 1 ? "" : "s"} couldn't be read:
-            </strong>
-            <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
-              {errors.map((e) => (
-                <li key={e.sheetId} style={{ marginTop: 4 }}>
-                  {e.label || e.sheetId} — {e.error}{" "}
-                  <button type="button" className="remove-link" onClick={() => handleRemove(e.sheetId)}>
-                    remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      {errors.length > 0 && (
+        <div className="error-box">
+          <strong>
+            {errors.length} saved project{errors.length === 1 ? "" : "s"} couldn't be read:
+          </strong>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+            {errors.map((e) => (
+              <li key={e.sheetId} style={{ marginTop: 4 }}>
+                {e.label || e.sheetId} — {e.error}{" "}
+                <button type="button" className="remove-link" onClick={() => handleRemove(e.sheetId)}>
+                  remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {loading ? (
         <div className="card">Loading your dashboard…</div>
@@ -285,7 +449,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {activeTab === "all" && rollup && projects.length > 0 && <RollupView rollup={rollup} projects={projects} onSelect={setActiveTab} />}
+          {activeTab === "all" && rollup && projects.length > 0 && (
+            <RollupView rollup={rollup} projects={projects} onSelect={setActiveTab} />
+          )}
 
           {activeTab !== "all" && activeProject && (
             <ProjectView project={activeProject} onRemove={() => handleRemove(activeProject.sheetId)} />
@@ -314,16 +480,24 @@ function RollupView({
         <KpiCard label="Overdue Tasks" value={rollup.totalOverdueTasks} />
         <KpiCard label="Blocked Tasks" value={rollup.totalBlockedTasks} />
         <KpiCard label="Upcoming Milestones" value={rollup.totalUpcomingMilestones} sub="Next 7 days" />
-        <div className="kpi-card">
-          <div className="kpi-label">RAG Breakdown</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            {RAG_ORDER.filter((r) => rollup.ragCounts[r] > 0).map((r) => (
-              <span key={r} className={`rag-badge ${ragClass(r)}`}>
-                {r}: {rollup.ragCounts[r]}
-              </span>
-            ))}
-          </div>
+      </div>
+
+      <div className="chart-grid">
+        <div className="chart-card">
+          <h3>Portfolio RAG</h3>
+          <ChartCanvas type="doughnut" data={buildPortfolioRagDonut(rollup.ragCounts)} options={donutOptions} height={220} />
         </div>
+        {rollup.resourceHours.length > 0 && (
+          <div className="chart-card">
+            <h3>Resource Load Across Projects</h3>
+            <ChartCanvas
+              type="bar"
+              data={buildResourceBar(rollup.resourceHours)}
+              options={horizontalBarOptions}
+              height={Math.max(180, Math.min(rollup.resourceHours.length, 10) * 28)}
+            />
+          </div>
+        )}
       </div>
 
       <h2 style={{ marginTop: 32 }}>Projects</h2>
@@ -448,6 +622,34 @@ function ProjectView({ project, onRemove }: { project: ProjectSnapshot; onRemove
             </div>
           </div>
 
+          <div className="chart-grid">
+            <div className="chart-card">
+              <h3>Deliverable Health</h3>
+              <ChartCanvas type="doughnut" data={buildRagDonut(project.deliverables)} options={donutOptions} height={220} />
+            </div>
+            <div className="chart-card">
+              <h3>Task Status Breakdown</h3>
+              <ChartCanvas type="bar" data={buildStatusBar(k.statusBreakdown)} options={horizontalBarOptions} height={220} />
+            </div>
+            {k.burndown.length > 0 && (
+              <div className="chart-card chart-card-wide">
+                <h3>Burndown — Ideal Pace vs Actual</h3>
+                <ChartCanvas type="line" data={buildBurndown(k.burndown)} options={burndownOptions} height={240} />
+              </div>
+            )}
+            {k.resourceHours.length > 0 && (
+              <div className="chart-card">
+                <h3>Resource Allocation</h3>
+                <ChartCanvas
+                  type="bar"
+                  data={buildResourceBar(k.resourceHours)}
+                  options={horizontalBarOptions}
+                  height={Math.max(180, k.resourceHours.length * 28)}
+                />
+              </div>
+            )}
+          </div>
+
           <h2 style={{ marginTop: 32 }}>Deliverables</h2>
           <table className="data-table">
             <thead>
@@ -471,6 +673,8 @@ function ProjectView({ project, onRemove }: { project: ProjectSnapshot; onRemove
               ))}
             </tbody>
           </table>
+
+          <DeliverableTimeline project={project} />
 
           {k.resourceHours.length > 0 && (
             <>

@@ -25,6 +25,13 @@ browser session. Use **Remove from dashboard** (on a project's tab, or next
 to an error in the warning box) to take one off — this only removes it from
 your dashboard, it never touches the actual Google Sheet.
 
+**The setup panel gets out of the way once you have data.** The first time
+the dashboard loads with at least one project on it, the "Add a project" /
+"Pull by Business Unit Head" panel collapses automatically — you land
+straight on the tabs and widgets from then on. Click **+ Manage Projects**
+(top right) any time you want to add another link, pull a different BU
+Head, or hit Refresh.
+
 **A sheet only shows up if you can already open it.** The dashboard reads
 every sheet using *your own* Google sign-in — the same as opening it in
 Drive yourself. If you're the Business Unit Head named on a project, it was
@@ -76,6 +83,29 @@ always consistent with what you see when the sheet is open.
 | Upcoming Milestones | Summed across every project, next 7 days. |
 | RAG Breakdown | How many projects are currently Red / Amber / Gray / Green. |
 | Resource Load Across Projects | The same per-person hour totals as above, but **added up across every project on the dashboard** — this is the one number a single-project view can't give you: who's carrying the most hours once you account for everything they're on. |
+
+## Charts and widgets
+
+Every KPI above also has a visual next to it — hover any chart for exact
+values (Chart.js's built-in tooltips):
+
+- **Deliverable Health** (donut) — deliverables by RAG.
+- **Task Status Breakdown** (bar) — how many tasks currently sit in each
+  Status value from the Lists tab (Completed, WIP, Blocked, On Hold, YTS,
+  or any custom status you've added).
+- **Burndown — Ideal Pace vs Actual** (line) — a dashed "ideal pace" line
+  (linear from Project Start to Project End) against a solid "actual" line
+  built from tasks' real Actual Dates. When the actual line sits below the
+  ideal line, the project is behind; above it, ahead. Only shown once both
+  project dates are set.
+- **Resource Allocation** (bar) — same hours-per-person data as the table
+  below it, as a quick visual scan.
+- **Deliverable Timeline** — a dependency-free Gantt-style strip: one bar
+  per deliverable spanning its earliest to latest task Baseline Date,
+  colored by RAG, against the Project Start → Project End axis, with a red
+  marker for today. Hover a bar for its exact date range.
+- **Portfolio RAG** and **Resource Load Across Projects** (All Projects
+  tab) — the same idea, aggregated across your whole dashboard.
 
 ## What's next (Phase 4)
 
