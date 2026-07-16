@@ -52,6 +52,7 @@ export default function DriveFoldersPage() {
     <main>
       <div className="top-nav">
         <Link href="/upload">← Back to Upload</Link>
+        <Link href="/dashboard">Dashboard →</Link>
       </div>
       <div className="card">
         <h1>Create Drive Folders</h1>

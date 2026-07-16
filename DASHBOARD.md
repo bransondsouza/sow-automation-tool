@@ -1,0 +1,83 @@
+# How the Project Dashboard works
+
+`/dashboard` is a live view over any number of Project Plan & Tracker sheets
+— your own, or anyone's you have access to. It doesn't store your project
+data; every time you open it, it re-reads the live sheets with your own
+Google account. This document explains how projects get onto your
+dashboard, what each KPI means, and how it's computed.
+
+## Getting projects onto your dashboard
+
+There are two ways, and you can mix both:
+
+1. **Paste a sheet link.** Under "Add a project by sheet link," paste the
+   Project Plan & Tracker link (an optional label helps if the sheet's own
+   title is generic). It's saved to your account immediately.
+2. **Pull by Business Unit Head.** Type a name or email under "Pull all
+   projects under a Business Unit Head" and click Pull. This searches every
+   completed upload for a matching `Business Unit Head` field (set on the
+   Upload form) and adds every sheet it finds — saved to your account the
+   same as a pasted link, so you only need to do this once per person.
+
+Either way, what you add is **remembered** — it's stored in your account
+(a `dashboard_links` table, keyed to your email), not just for the current
+browser session. Use **Remove from dashboard** (on a project's tab, or next
+to an error in the warning box) to take one off — this only removes it from
+your dashboard, it never touches the actual Google Sheet.
+
+**A sheet only shows up if you can already open it.** The dashboard reads
+every sheet using *your own* Google sign-in — the same as opening it in
+Drive yourself. If you're the Business Unit Head named on a project, it was
+auto-shared with you when the project was generated (Phase 2). Otherwise,
+ask whoever generated the sheet to share it with your email first — if you
+add or pull in a sheet you don't have access to, it shows up as an error
+under the project list instead of breaking the rest of your dashboard.
+
+## Layout
+
+- One **tab per project**, named after the project.
+- An **All Projects** tab that rolls the same numbers up across everything
+  on your dashboard — this is the view a Business Unit Head managing
+  several projects will likely live in day to day.
+
+If a project's Project Tracking & Execution tab hasn't been generated yet
+(the Estimation tab is still being filled in), its tab shows a short notice
+instead of KPIs — nothing to compute yet.
+
+## KPI definitions
+
+All of these are computed from the live Tracking sheet — the same
+Deliverable × Task matrix, RAG values, and Current Stage the in-sheet Apps
+Script maintains (see `SHEETS_TRACKER.md`). The dashboard doesn't
+recalculate RAG itself; it reads what's already in the sheet, so it's
+always consistent with what you see when the sheet is open.
+
+**Per project:**
+
+| KPI | What it means |
+|---|---|
+| Overall Health (RAG) | The worst RAG across all of a project's deliverables: any Red deliverable makes the whole project Red; else any Amber makes it Amber; else Gray if nothing's finished; Green only if every deliverable is Green. |
+| Task Completion % | Completed tasks ÷ total tasks, across every deliverable. |
+| On-Time Completion % | Of the tasks that are Completed, the % whose Actual Date was on or before their Baseline Date. Blank if nothing's completed yet. |
+| Overdue Tasks | Tasks not yet Completed whose Baseline Date has passed. |
+| Blocked Tasks | Tasks whose Status starts with "Blocked." |
+| Upcoming Milestones | Tasks not yet Completed with a Baseline Date in the next 7 days — a "what's due soon" list. |
+| Days to Deadline | Project End Date minus today. |
+| Schedule Pace | Compares % of the project's calendar time elapsed against % of tasks completed. More than 15 points behind → **Behind**; more than 15 points ahead → **Ahead**; otherwise **On Pace**. This is a leading indicator — it can flag a problem before any single task is technically "overdue." |
+| Resource Allocation | Hours Allocated summed per person, from every task they're Assigned To on that project. |
+
+**All Projects (rollup):**
+
+| KPI | What it means |
+|---|---|
+| Active Projects | Count of projects on your dashboard. |
+| Avg. Task Completion | Average of each project's Task Completion %. |
+| Overdue / Blocked Tasks | Summed across every project. |
+| Upcoming Milestones | Summed across every project, next 7 days. |
+| RAG Breakdown | How many projects are currently Red / Amber / Gray / Green. |
+| Resource Load Across Projects | The same per-person hour totals as above, but **added up across every project on the dashboard** — this is the one number a single-project view can't give you: who's carrying the most hours once you account for everything they're on. |
+
+## What's next (Phase 4)
+
+A "Generate Client Status Report" button that compiles a project's current
+KPIs into a new Slides deck and posts a notification to Google Chat.

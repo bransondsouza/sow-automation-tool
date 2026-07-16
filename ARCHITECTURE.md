@@ -13,7 +13,7 @@ Statement of Work (PDF or Word), and the tool automatically produces:
 
 It is built in four phases so each piece is working and testable before the next
 is added. This document describes the target end state; the current build covers
-**Phase 1** in full working code, with Phases 2–4 scoped and ready to build next.
+**Phases 1–3** in full working code, with Phase 4 scoped and ready to build next.
 
 ---
 
@@ -141,19 +141,32 @@ with that person. A separate `/drive-folders` page lets anyone paste a
 parent folder link and a list of names to batch-create subfolders. See
 `SHEETS_TRACKER.md` for the full layout.
 
-**Phase 3 — HTML Dashboard**
-A page where a user can add one or more tracker Sheet links; the app reads
-each live via the Sheets API and renders it as its own tab, with the 7 KPI
-widgets (Schedule Variance, Resource Utilization, Task Completion %,
-High-Risk Triggers, Delays, On-Time %, plus one more we'll finalize) —
-letting one person (e.g. a Business Unit Head) flip between several
-projects' health in one page. A combined "All Projects" tab rolls the same
-KPIs up across every added project. Because the BU Head field from Phase 2
-is stored in our database, the dashboard can also auto-populate: type a BU
-Head's name/email and it pulls in every tracker generated under them,
-instead of pasting each link by hand. This depends on those sheets already
-being shared with whoever's viewing the dashboard (handled automatically by
-the Phase 2 auto-share, for the BU Head specifically).
+**Phase 3 — HTML Dashboard ✅ built**
+A `/dashboard` page where a user adds project sheets two ways: pasting a
+tracker link directly, or typing a Business Unit Head's name/email to pull
+in every completed job under them (found via the `bu_head_name`/
+`bu_head_email` columns on `jobs`) — both are saved permanently to that
+viewer's account in a new `dashboard_links` table, so the dashboard looks
+the same every time they open it. The app reads each sheet live via the
+Sheets API, using the *viewer's own* Google token — this only works for
+sheets that person can already open (their own, auto-shared to them as BU
+Head, or shared by hand), and a sheet that fails to read is reported
+per-project instead of breaking the whole dashboard. Each project gets its
+own tab plus an **All Projects** rollup tab. KPIs, computed from the live
+Tracking sheet:
+- **Overall RAG** — worst RAG across a project's deliverables.
+- **Task Completion %** and **On-Time Completion %** (of completed tasks,
+  how many finished on/before their Baseline Date).
+- **Overdue Tasks** and **Blocked Tasks** — counts, drawn straight from the
+  same logic the in-sheet Apps Script uses for RAG.
+- **Upcoming Milestones** — tasks due in the next 7 days.
+- **Days to Deadline** and **Schedule Pace** (Ahead / On Pace / Behind) —
+  compares % of project time elapsed against % of tasks completed as a
+  leading indicator, not just a lagging one.
+- **Resource Allocation** — hours per person per project, and, on the All
+  Projects tab, summed **across every project on the dashboard** — surfaces
+  who's overloaded across a BU Head's whole portfolio, not just one project.
+See `DASHBOARD.md` for the full explanation.
 
 **Phase 4 — Client report export + Chat notification**
 "Generate Client Status Report" button compiles the live KPIs into a new

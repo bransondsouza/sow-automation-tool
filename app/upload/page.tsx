@@ -56,7 +56,10 @@ export default function UploadPage() {
     <main>
       <div className="top-nav">
         <span>Signed in as {session?.user?.email}</span>
-        <Link href="/drive-folders">Create Drive folders →</Link>
+        <span style={{ display: "flex", gap: 16 }}>
+          <Link href="/dashboard">Dashboard →</Link>
+          <Link href="/drive-folders">Create Drive folders →</Link>
+        </span>
       </div>
       <div className="card">
         <h1>Upload a Statement of Work</h1>

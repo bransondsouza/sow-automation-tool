@@ -74,3 +74,16 @@ export interface Job {
   created_at: string;
   updated_at: string;
 }
+
+// Phase 3 — a project sheet a given person has added to their dashboard,
+// either pasted by hand ("manual") or auto-discovered by looking up a
+// Business Unit Head's completed jobs ("bu_head").
+export interface DashboardLink {
+  id: string;
+  user_email: string;
+  sheet_id: string;
+  sheet_url: string;
+  label: string | null;
+  source: "manual" | "bu_head";
+  created_at: string;
+}

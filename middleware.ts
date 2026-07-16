@@ -7,8 +7,10 @@ export const config = {
     "/upload/:path*",
     "/status/:path*",
     "/drive-folders/:path*",
+    "/dashboard/:path*",
     "/api/upload/:path*",
     "/api/status/:path*",
     "/api/drive-folders/:path*",
+    "/api/dashboard/:path*",
   ],
 };

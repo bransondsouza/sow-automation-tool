@@ -52,11 +52,29 @@ create table if not exists templates (
   created_at timestamptz not null default now()
 );
 
+-- Dashboard (Phase 3): the sheet links a person has added to their
+-- dashboard — either pasted by hand, or auto-discovered by looking up a
+-- Business Unit Head's completed jobs. One row per (viewer, sheet), so the
+-- dashboard looks the same every time that person opens it.
+create table if not exists dashboard_links (
+  id uuid primary key default gen_random_uuid(),
+  user_email text not null,
+  sheet_id text not null,
+  sheet_url text not null,
+  label text,
+  source text not null default 'manual' check (source in ('manual', 'bu_head')),
+  created_at timestamptz not null default now(),
+  unique (user_email, sheet_id)
+);
+
+create index if not exists dashboard_links_user_email_idx on dashboard_links (user_email);
+
 -- Row Level Security: the app's server code uses the Supabase *service role*
 -- key, which always bypasses RLS — these policies only matter if you later
 -- let the browser query Supabase directly with a user's own session.
 alter table jobs enable row level security;
 alter table templates enable row level security;
+alter table dashboard_links enable row level security;
 
 drop policy if exists "Users can read their own jobs" on jobs;
 create policy "Users can read their own jobs"
@@ -67,6 +85,11 @@ drop policy if exists "Anyone signed in can read templates" on templates;
 create policy "Anyone signed in can read templates"
   on templates for select
   using (auth.role() = 'authenticated');
+
+drop policy if exists "Users can manage their own dashboard links" on dashboard_links;
+create policy "Users can manage their own dashboard links"
+  on dashboard_links for select
+  using (auth.jwt() ->> 'email' = user_email);
 
 -- ── Storage bucket ──
 -- Buckets can't be created from SQL. In the Supabase dashboard:
@@ -95,3 +118,9 @@ create policy "Anyone signed in can read templates"
 --   alter table jobs add constraint jobs_status_check
 --     check (status in ('extracting', 'parsing', 'generating_slides', 'generating_sheet', 'finalizing', 'complete', 'error'));
 --   create index if not exists jobs_bu_head_email_idx on jobs (bu_head_email);
+
+-- ── Adding Phase 3 (Dashboard) to an existing database ── the
+-- `create table if not exists dashboard_links` block above is already safe
+-- to run on its own against an existing database — just run this whole
+-- file again; every statement in it is idempotent (if not exists / or
+-- replace / drop-then-create policy).

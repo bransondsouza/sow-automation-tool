@@ -23,6 +23,9 @@ export default async function HomePage() {
             <Link href="/upload" className="btn">
               Go to Upload →
             </Link>
+            <Link href="/dashboard" className="btn" style={{ marginLeft: 12, background: "var(--surface)", color: "var(--primary)", border: "1px solid var(--border)" }}>
+              Open Dashboard →
+            </Link>
             <div style={{ marginTop: 16 }}>
               <SignOutButton />
             </div>
