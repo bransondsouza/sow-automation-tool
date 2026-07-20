@@ -144,8 +144,8 @@ function buildBurndown(points: BurndownPoint[]) {
       {
         label: "Actual",
         data: points.map((p) => p.actualPct),
-        borderColor: "#2563eb",
-        backgroundColor: "rgba(37,99,235,0.12)",
+        borderColor: "#1d4e6d",
+        backgroundColor: "rgba(29,78,109,0.12)",
         pointRadius: 2,
         borderWidth: 2,
         tension: 0.2,
@@ -163,7 +163,7 @@ function buildResourceBar(resourceHours: { name: string; hours: number }[]) {
       {
         label: "Hours Allocated",
         data: top.map((r) => r.hours),
-        backgroundColor: "#2563eb",
+        backgroundColor: "#1d4e6d",
         borderRadius: 4,
       },
     ],

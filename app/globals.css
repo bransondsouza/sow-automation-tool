@@ -1,12 +1,19 @@
 :root {
-  --bg: #f6f7f9;
+  /* LearningMate brand palette: deep navy + bold orange + olive green,
+     sampled from learningmate.com. Status/RAG colors (red/amber/green/gray
+     used for project health) are intentionally kept separate from these —
+     they're a universal traffic-light convention, not a brand color. */
+  --bg: #f1f6f8;
   --surface: #ffffff;
-  --text: #1a1d23;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --success: #16a34a;
+  --text: #1b2a38;
+  --muted: #5c7487;
+  --border: #afc6d3;
+  --primary: #f26b22;
+  --primary-hover: #d8590f;
+  --navy: #1d4e6d;
+  --navy-hover: #163c55;
+  --accent-green: #8faa3c;
+  --success: #6f9438;
   --error: #dc2626;
   --radius: 10px;
 }
@@ -31,19 +38,34 @@ main {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-top: 3px solid var(--accent-green);
   border-radius: var(--radius);
   padding: 32px;
   margin-bottom: 24px;
 }
 
+a {
+  color: var(--navy);
+}
+
+a:hover {
+  color: var(--primary);
+}
+
 h1 {
   font-size: 28px;
   margin: 0 0 8px;
+  color: var(--navy);
 }
 
 h2 {
   font-size: 18px;
   margin: 0 0 16px;
+  color: var(--navy);
+}
+
+h3 {
+  color: var(--navy);
 }
 
 p.subtitle {
@@ -66,13 +88,26 @@ label {
 }
 
 input[type="file"],
-input[type="text"] {
+input[type="text"],
+input[type="email"],
+textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
   background: #fff;
+  color: var(--text);
+  font-family: inherit;
+}
+
+input[type="file"]:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(242, 107, 34, 0.15);
 }
 
 button, .btn {
@@ -244,7 +279,7 @@ button:disabled {
 }
 
 .tab-button.active {
-  color: var(--primary);
+  color: var(--navy);
   border-bottom-color: var(--primary);
 }
 
@@ -265,6 +300,7 @@ button:disabled {
 .kpi-card {
   background: var(--bg);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--navy);
   border-radius: var(--radius);
   padding: 16px 18px;
 }
