@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { ProjectSnapshot } from "@/lib/dashboardData";
+import MonthlyBreakdown from "./MonthlyBreakdown";
 
 interface CalendarEvent {
   date: string; // yyyy-mm-dd
@@ -93,6 +94,17 @@ export default function DeliveryCalendar({
       return true;
     });
   }, [allEvents, dateFrom, dateTo, stageFilter]);
+
+  // Date-range only (no stage filter) — feeds the monthly stage-mix
+  // breakdown, which exists specifically to show the stage mix, so pinning
+  // it to a single stage would defeat its purpose.
+  const dateRangeEvents = useMemo(() => {
+    return allEvents.filter((e) => {
+      if (dateFrom && e.date < dateFrom) return false;
+      if (dateTo && e.date > dateTo) return false;
+      return true;
+    });
+  }, [allEvents, dateFrom, dateTo]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -198,6 +210,8 @@ export default function DeliveryCalendar({
           <div className="kpi-sub">task deliveries</div>
         </div>
       </div>
+
+      <MonthlyBreakdown events={dateRangeEvents} />
 
       <div className="calendar-widget">
         <div className="calendar-header">
