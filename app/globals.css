@@ -90,7 +90,9 @@ label {
 input[type="file"],
 input[type="text"],
 input[type="email"],
-textarea {
+input[type="date"],
+textarea,
+select {
   width: 100%;
   padding: 10px 12px;
   border: 1.5px solid var(--border);
@@ -104,7 +106,9 @@ textarea {
 input[type="file"]:focus,
 input[type="text"]:focus,
 input[type="email"]:focus,
-textarea:focus {
+input[type="date"]:focus,
+textarea:focus,
+select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(242, 107, 34, 0.15);
@@ -467,4 +471,125 @@ button:disabled {
   background: #ef4444;
   opacity: 0.55;
   z-index: 2;
+}
+
+/* ── Delivery Calendar ── */
+
+.calendar-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-top: 8px;
+}
+
+.calendar-filters > div {
+  min-width: 160px;
+}
+
+.calendar-filters label {
+  margin-top: 0;
+}
+
+.calendar-widget {
+  margin-top: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 15px;
+  color: var(--navy);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-weekdays {
+  margin-bottom: 4px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 4px 0;
+}
+
+.calendar-cell {
+  position: relative;
+  min-height: 56px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 4px;
+  margin: 0;
+}
+
+.calendar-cell:disabled {
+  cursor: default;
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.calendar-cell:not(:disabled):hover {
+  border-color: var(--primary);
+}
+
+.calendar-cell-empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.calendar-cell-today {
+  border-color: var(--primary);
+  border-width: 2px;
+}
+
+.calendar-cell-selected {
+  background: rgba(29, 78, 109, 0.1);
+  border-color: var(--navy);
+  border-width: 2px;
+}
+
+.calendar-date-num {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.calendar-count-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-detail {
+  margin-top: 20px;
 }

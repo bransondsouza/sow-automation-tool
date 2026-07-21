@@ -15,6 +15,7 @@ import type {
 import type { DashboardLink } from "@/lib/types";
 import ChartCanvas from "./ChartCanvas";
 import DeliverableTimeline from "./DeliverableTimeline";
+import DeliveryCalendar from "./DeliveryCalendar";
 
 const RAG_COLORS: Record<string, string> = {
   Red: "#ef4444",
@@ -563,6 +564,8 @@ function RollupView({
           </table>
         </>
       )}
+
+      <DeliveryCalendar projects={projects} showProject />
     </div>
   );
 }
@@ -675,6 +678,8 @@ function ProjectView({ project, onRemove }: { project: ProjectSnapshot; onRemove
           </table>
 
           <DeliverableTimeline project={project} />
+
+          <DeliveryCalendar projects={[project]} />
 
           {k.resourceHours.length > 0 && (
             <>
