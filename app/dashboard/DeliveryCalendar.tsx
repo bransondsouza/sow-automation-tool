@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ProjectSnapshot } from "@/lib/dashboardData";
 import MonthlyBreakdown from "./MonthlyBreakdown";
+import { stageColor } from "./stageColors";
 
 interface CalendarEvent {
   date: string; // yyyy-mm-dd
@@ -39,13 +40,6 @@ function flattenEvents(projects: ProjectSnapshot[]): CalendarEvent[] {
   return events;
 }
 
-function dayColor(dayEvents: CalendarEvent[]): string {
-  if (dayEvents.some((e) => e.blocked || e.overdue)) return "#ef4444";
-  if (dayEvents.every((e) => e.completed)) return "#22c55e";
-  if (dayEvents.some((e) => !/^yts/i.test(e.status))) return "#f59e0b";
-  return "#1d4e6d";
-}
-
 function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -54,11 +48,34 @@ function toKey(y: number, m: number, d: number): string {
   return `${y}-${pad(m + 1)}-${pad(d)}`;
 }
 
-function formatMonthLabel(d: Date): string {
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+function monthLabel(y: number, m: number): string {
+  return new Date(y, m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function dominantStage(dayEvents: CalendarEvent[]): string {
+  const counts = new Map<string, number>();
+  dayEvents.forEach((e) => counts.set(e.taskLabel, (counts.get(e.taskLabel) ?? 0) + 1));
+  let best = dayEvents[0].taskLabel;
+  let bestCount = 0;
+  counts.forEach((c, name) => {
+    if (c > bestCount) {
+      bestCount = c;
+      best = name;
+    }
+  });
+  return best;
+}
+
+function stageMix(dayEvents: CalendarEvent[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  dayEvents.forEach((e) => counts.set(e.taskLabel, (counts.get(e.taskLabel) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+const MONTHS_PER_PAGE = 3;
 
 export default function DeliveryCalendar({
   projects,
@@ -69,19 +86,27 @@ export default function DeliveryCalendar({
 }) {
   const allEvents = useMemo(() => flattenEvents(projects), [projects]);
 
-  const stageOptions = useMemo(() => {
-    const set = new Set<string>();
-    allEvents.forEach((e) => set.add(e.taskLabel));
-    return Array.from(set).sort();
+  // Stage order (first-seen, across every event regardless of filters) so a
+  // given stage always gets the same color here and on the By Month widget,
+  // no matter what date range or stage filter is active.
+  const stageOrder = useMemo(() => {
+    const order: string[] = [];
+    allEvents.forEach((e) => {
+      if (!order.includes(e.taskLabel)) order.push(e.taskLabel);
+    });
+    return order;
   }, [allEvents]);
+
+  const stageOptions = useMemo(() => [...stageOrder].sort(), [stageOrder]);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [stageFilter, setStageFilter] = useState("All");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const [viewMonth, setViewMonth] = useState<Date>(() => {
-    const base = allEvents[0]?.date;
+  const [pageStart, setPageStart] = useState<Date>(() => {
+    const dates = allEvents.map((e) => e.date).sort();
+    const base = dates[0];
     const d = base ? new Date(base) : new Date();
     return isNaN(d.getTime()) ? new Date() : new Date(d.getFullYear(), d.getMonth(), 1);
   });
@@ -133,8 +158,13 @@ export default function DeliveryCalendar({
     return bestDate ? { date: bestDate, count: bestCount } : null;
   }, [eventsByDate]);
 
-  function shiftMonth(delta: number) {
-    setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  function shiftPage(delta: number) {
+    setPageStart((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta * MONTHS_PER_PAGE, 1));
+  }
+
+  function jumpToToday() {
+    const now = new Date();
+    setPageStart(new Date(now.getFullYear(), now.getMonth(), 1));
   }
 
   function resetFilters() {
@@ -143,25 +173,23 @@ export default function DeliveryCalendar({
     setStageFilter("All");
   }
 
-  const year = viewMonth.getFullYear();
-  const month = viewMonth.getMonth();
-  const firstDayOfWeek = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const now = new Date();
   const todayKey = toKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const filtersActive = Boolean(dateFrom || dateTo || stageFilter !== "All");
 
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const pageMonths = Array.from({ length: MONTHS_PER_PAGE }, (_, i) => {
+    const d = new Date(pageStart.getFullYear(), pageStart.getMonth() + i, 1);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
 
   const selectedEvents = selectedDate ? eventsByDate.get(selectedDate) ?? [] : [];
-  const filtersActive = Boolean(dateFrom || dateTo || stageFilter !== "All");
 
   return (
     <div style={{ marginTop: 32 }}>
       <h2>Delivery Calendar</h2>
       <p className="hint" style={{ marginTop: -8, marginBottom: 16 }}>
-        Each date shows how many tasks have a Baseline Date that day. Click a date to see what's due.
+        Each date shows how many tasks have a Baseline Date that day, colored by the day's main stage.
+        Click a date to see what's due.
       </p>
 
       <div className="calendar-filters">
@@ -211,56 +239,116 @@ export default function DeliveryCalendar({
         </div>
       </div>
 
-      <MonthlyBreakdown events={dateRangeEvents} />
+      <MonthlyBreakdown events={dateRangeEvents} stageOrder={stageOrder} />
 
       <div className="calendar-widget">
         <div className="calendar-header">
-          <button type="button" className="btn-secondary" onClick={() => shiftMonth(-1)} style={{ margin: 0 }}>
-            ←
+          <button type="button" className="btn-secondary" onClick={() => shiftPage(-1)} style={{ margin: 0 }}>
+            ← 3 months
           </button>
-          <strong>{formatMonthLabel(viewMonth)}</strong>
-          <button type="button" className="btn-secondary" onClick={() => shiftMonth(1)} style={{ margin: 0 }}>
-            →
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setViewMonth(new Date(now.getFullYear(), now.getMonth(), 1))}
-            style={{ margin: 0 }}
-          >
+          <button type="button" className="btn-secondary" onClick={jumpToToday} style={{ margin: 0 }}>
             Today
           </button>
+          <button type="button" className="btn-secondary" onClick={() => shiftPage(1)} style={{ margin: 0 }}>
+            3 months →
+          </button>
         </div>
-        <div className="calendar-grid calendar-weekdays">
-          {WEEKDAYS.map((w, i) => (
-            <div key={i} className="calendar-weekday">
-              {w}
-            </div>
-          ))}
-        </div>
-        <div className="calendar-grid">
-          {cells.map((d, idx) => {
-            if (d === null) return <div key={idx} className="calendar-cell calendar-cell-empty" />;
-            const key = toKey(year, month, d);
-            const dayEvents = eventsByDate.get(key) ?? [];
-            const isToday = key === todayKey;
-            const isSelected = key === selectedDate;
+
+        {stageOrder.length > 0 && (
+          <div className="calendar-legend">
+            {stageOrder.map((s) => (
+              <span className="calendar-legend-item" key={s}>
+                <span className="calendar-legend-dot" style={{ background: stageColor(s, stageOrder) }} />
+                {s}
+              </span>
+            ))}
+            <span className="calendar-legend-item">
+              <span className="calendar-legend-dot calendar-legend-today" />
+              Today
+            </span>
+          </div>
+        )}
+
+        <div className="calendar-page-grid">
+          {pageMonths.map(({ year, month }) => {
+            const firstDayOfWeek = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const cells: (number | null)[] = [];
+            for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
+            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+            const monthTotal = Array.from(eventsByDate.entries()).reduce(
+              (sum, [key, list]) => (key.startsWith(`${year}-${pad(month + 1)}`) ? sum + list.length : sum),
+              0
+            );
+
             return (
-              <button
-                type="button"
-                key={idx}
-                className={`calendar-cell ${isToday ? "calendar-cell-today" : ""} ${isSelected ? "calendar-cell-selected" : ""}`}
-                onClick={() => dayEvents.length > 0 && setSelectedDate(isSelected ? null : key)}
-                disabled={dayEvents.length === 0}
-                title={dayEvents.length > 0 ? `${dayEvents.length} due ${key}` : key}
-              >
-                <span className="calendar-date-num">{d}</span>
-                {dayEvents.length > 0 && (
-                  <span className="calendar-count-badge" style={{ background: dayColor(dayEvents) }}>
-                    {dayEvents.length}
+              <div className="calendar-month" key={`${year}-${month}`}>
+                <div className="calendar-month-header">
+                  <strong>{monthLabel(year, month)}</strong>
+                  <span className="hint" style={{ margin: 0 }}>
+                    {monthTotal} deliveries
                   </span>
-                )}
-              </button>
+                </div>
+                <div className="calendar-grid calendar-weekdays">
+                  {WEEKDAYS.map((w, i) => (
+                    <div key={i} className="calendar-weekday">
+                      {w}
+                    </div>
+                  ))}
+                </div>
+                <div className="calendar-grid">
+                  {cells.map((d, idx) => {
+                    if (d === null) return <div key={idx} className="calendar-cell calendar-cell-empty" />;
+                    const key = toKey(year, month, d);
+                    const dayEvents = eventsByDate.get(key) ?? [];
+                    const isToday = key === todayKey;
+                    const isSelected = key === selectedDate;
+                    const hasIssue = dayEvents.some((e) => e.overdue || e.blocked);
+                    const mix = dayEvents.length > 0 ? stageMix(dayEvents) : [];
+
+                    return (
+                      <button
+                        type="button"
+                        key={idx}
+                        className={[
+                          "calendar-cell",
+                          isToday ? "calendar-cell-today" : "",
+                          isSelected ? "calendar-cell-selected" : "",
+                          hasIssue ? "calendar-cell-issue" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() => dayEvents.length > 0 && setSelectedDate(isSelected ? null : key)}
+                        disabled={dayEvents.length === 0}
+                        title={dayEvents.length > 0 ? `${dayEvents.length} due ${key}` : key}
+                      >
+                        <span className="calendar-date-num">{d}</span>
+                        {dayEvents.length > 0 && (
+                          <>
+                            <span
+                              className="calendar-count-badge"
+                              style={{ background: stageColor(dominantStage(dayEvents), stageOrder) }}
+                            >
+                              {dayEvents.length}
+                            </span>
+                            <span className="calendar-day-stack">
+                              {mix.map((s) => (
+                                <span
+                                  key={s.name}
+                                  style={{
+                                    width: `${(s.count / dayEvents.length) * 100}%`,
+                                    background: stageColor(s.name, stageOrder),
+                                  }}
+                                />
+                              ))}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>

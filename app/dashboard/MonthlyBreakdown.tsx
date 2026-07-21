@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { stageColor } from "./stageColors";
 
 interface MonthEvent {
   date: string; // yyyy-mm-dd
@@ -19,21 +20,19 @@ interface MonthBucket {
   stages: StageCount[];
 }
 
-const PALETTE = ["#1d4e6d", "#3f7fa6", "#7fb3d5", "#f26b22", "#8faa3c", "#a56cc1", "#c2410c", "#0f766e"];
-
-function stageColor(name: string, order: string[]): string {
-  const idx = order.indexOf(name);
-  return PALETTE[idx >= 0 ? idx % PALETTE.length : 0];
-}
-
 /**
  * "By Month · Stage Breakdown" — one card per month with deliveries (tasks
  * with a Baseline Date that month), a stacked bar showing the stage/task-type
  * mix, and a per-stage list with mini bars. Mirrors the reference dashboard's
  * "By Month · Subject Breakdown" widget, using Stage/Task Type as our
  * equivalent grouping dimension (we don't have a "subject" field).
+ *
+ * `stageOrder` is optional so this stays usable standalone, but the
+ * Delivery Calendar passes its own (computed across ALL of a project's
+ * events, not just what's in `events` here) so a given stage gets the same
+ * color in both widgets regardless of the active date-range filter.
  */
-export default function MonthlyBreakdown({ events }: { events: MonthEvent[] }) {
+export default function MonthlyBreakdown({ events, stageOrder: sharedOrder }: { events: MonthEvent[]; stageOrder?: string[] }) {
   const { buckets, stageOrder } = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     const stageFirstSeen: string[] = [];
@@ -58,8 +57,8 @@ export default function MonthlyBreakdown({ events }: { events: MonthEvent[] }) {
       return { key, label, total, stages };
     });
 
-    return { buckets: built, stageOrder: stageFirstSeen };
-  }, [events]);
+    return { buckets: built, stageOrder: sharedOrder ?? stageFirstSeen };
+  }, [events, sharedOrder]);
 
   if (buckets.length === 0) return null;
 

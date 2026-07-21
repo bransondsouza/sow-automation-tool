@@ -110,20 +110,25 @@ values (Chart.js's built-in tooltips):
 ## Delivery Calendar
 
 Below the Deliverable Timeline on every tab (per-project, and All Projects
-with a Project column added) is an interactive calendar:
+with a Project column added) is an interactive calendar, showing **3
+months at a time**:
 
-- Each date shows a count badge for how many tasks have a **Baseline Date**
-  that day, colored red if any of that day's tasks are overdue or Blocked,
-  green if every task that day is Completed, amber if anything's in
-  progress, or navy if nothing's started yet.
+- A legend across the top lists every stage/task-type name found in that
+  project (colored consistently with the By Month widget below) plus a
+  swatch for **Today**.
+- Each date with tasks due shows a colored count badge — colored by that
+  day's *dominant* stage — and a thin stacked bar underneath showing the
+  full stage mix for that day. Days with an overdue or Blocked task also
+  get a subtle red ring around the cell, on top of whatever stage color
+  they'd otherwise show.
 - **Click a date** with a badge to list exactly what's due that day —
   deliverable, task, who it's assigned to, and status — right below the
   calendar. Click it again (or another date) to change the selection.
-- Use **← / → / Today** to move between months.
+- Use **← 3 months / Today / 3 months →** to page through the calendar
+  three months at a time.
 - **From / To** date filters and the **Stage / Task Type** dropdown (built
-  from that project's actual task names) narrow everything on the
-  calendar — the day badges, the click-through list, and the three mini
-  KPIs below the filters:
+  from that project's actual task names) narrow the day badges, the
+  click-through list, and the three mini KPIs below the filters:
   - **Delay %** — the share of *currently filtered* tasks that are overdue.
     (The main KPI grid's "Overdue Tasks" count is always for the whole
     project; this one moves with your filters.)
@@ -131,9 +136,14 @@ with a Project column added) is an interactive calendar:
     filtered range.
   - **In Range** — total task deliveries matching the current filters.
 
+The **By Month · Stage Breakdown** cards just above the calendar follow
+the From/To date range too, but deliberately ignore the Stage dropdown —
+narrowing a "what's the stage mix" chart down to one stage would just
+flatten it to a single bar.
+
 Example: to see how loaded up August is, set From = Aug 1, To = Aug 31 and
-leave Stage on "All stages" — the calendar, Delay %, and Busiest Day all
-narrow to just that window.
+leave Stage on "All stages" — the calendar, By Month cards, Delay %, and
+Busiest Day all narrow to just that window.
 
 ## What's next (Phase 4)
 
