@@ -109,12 +109,16 @@ export default function DeliveryCalendar({
       ? Math.round((filteredEvents.filter((e) => e.overdue).length / filteredEvents.length) * 100)
       : 0;
 
-  const busiest = useMemo(() => {
-    let best: { date: string; count: number } | null = null;
+  const busiest = useMemo<{ date: string; count: number } | null>(() => {
+    let bestDate: string | null = null;
+    let bestCount = 0;
     eventsByDate.forEach((list, date) => {
-      if (!best || list.length > best.count) best = { date, count: list.length };
+      if (list.length > bestCount) {
+        bestCount = list.length;
+        bestDate = date;
+      }
     });
-    return best;
+    return bestDate ? { date: bestDate, count: bestCount } : null;
   }, [eventsByDate]);
 
   function shiftMonth(delta: number) {
