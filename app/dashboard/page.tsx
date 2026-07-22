@@ -12,6 +12,7 @@ import type {
   StatusCount,
   BurndownPoint,
 } from "@/lib/dashboardData";
+import type { TooltipItem, ChartTypeRegistry } from "chart.js";
 import type { DashboardLink } from "@/lib/types";
 import ChartCanvas from "./ChartCanvas";
 import DeliverableTimeline from "./DeliverableTimeline";
@@ -217,10 +218,16 @@ function buildTaskRagDonut(deliverables: { rag: string; tasks: unknown[] }[]) {
   };
 }
 
-function taskRagTooltipLabel(ctx: { label?: string; parsed: number; dataset: { data: number[] } }): string {
-  const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-  const pct = total > 0 ? Math.round((ctx.parsed / total) * 100) : 0;
-  return `${ctx.label ?? ""}: ${ctx.parsed} task${ctx.parsed === 1 ? "" : "s"} (${pct}%)`;
+// Typed against Chart.js's actual tooltip-callback signature (a union across
+// every registered chart type, since ChartCanvas's `options` prop isn't
+// pinned to one chart type) rather than a narrower hand-rolled shape — the
+// narrower shape doesn't structurally match what Chart.js passes in and
+// fails the build's type check.
+function taskRagTooltipLabel(ctx: TooltipItem<keyof ChartTypeRegistry>): string {
+  const total = ctx.dataset.data.reduce((sum: number, v) => sum + (typeof v === "number" ? v : 0), 0);
+  const parsed = typeof ctx.parsed === "number" ? ctx.parsed : 0;
+  const pct = total > 0 ? Math.round((parsed / total) * 100) : 0;
+  return `${ctx.label ?? ""}: ${parsed} task${parsed === 1 ? "" : "s"} (${pct}%)`;
 }
 
 const taskRagDonutOptions = {
