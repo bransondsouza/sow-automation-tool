@@ -1,4 +1,4 @@
-# Deployment Guide — SOW Automation Tool (Phase 1 + Phase 2)
+# Deployment Guide — SOW Automation Tool (Phases 1–4)
 
 Written for someone doing this without a coding background. Every step is a
 click-by-click instruction. Budget about 60–90 minutes for the first setup.
@@ -23,6 +23,16 @@ hierarchy / Apps Script / Business Unit Head update?** Do three things:
 lists 5 APIs instead of 4 — just enable the one you're missing), (3)
 `git push` and redeploy. Then read the callout in step 1 about each
 employee's personal Apps Script API setting — it's new and easy to miss.
+
+**Already deployed and just pulled the Phase 4 (Client Status Report)
+update?** Do three things: (1) run the "Adding Phase 4" migration block at
+the bottom of `supabase/schema.sql`, (2) in Google Cloud Console, enable the
+**Gmail API** (step 1 below now lists 5 required APIs — Google Chat API is
+no longer one of them; see the callout there), (3) `git push` and redeploy.
+Anyone already signed in needs to sign out and back in **once** to grant the
+new Gmail permission — until they do, the email step of a status report
+fails with a message telling them so (the Slides deck and Chat notification
+still work either way).
 
 ---
 
@@ -54,7 +64,12 @@ files on their behalf.
    - Google Sheets API
    - Google Drive API
    - Google Apps Script API *(powers the in-sheet "Generate Project Tracker" button)*
-   - Google Chat API *(not used until Phase 4, but fine to enable now)*
+   - Gmail API *(powers the "Generate Client Status Report" email — Phase 4)*
+
+   > **You do NOT need to enable a Google Chat API.** The Phase 4 "ping the
+   > team on Google Chat" step uses a plain incoming webhook URL, which you
+   > set up per Chat space (not per Google Cloud project) — see `DASHBOARD.md`.
+   > There's no separate setup step for it here.
 
    > **Important — a setting Google hides per-person, not per-project.**
    > Enabling the Apps Script API above is only half of what's needed. Every

@@ -63,6 +63,10 @@ create table if not exists dashboard_links (
   sheet_url text not null,
   label text,
   source text not null default 'manual' check (source in ('manual', 'bu_head')),
+  -- Phase 4: remembered so the "Generate Client Status Report" panel comes
+  -- back pre-filled next time, instead of retyping every time.
+  chat_webhook_url text,
+  report_recipients text,
   created_at timestamptz not null default now(),
   unique (user_email, sheet_id)
 );
@@ -124,3 +128,11 @@ create policy "Users can manage their own dashboard links"
 -- to run on its own against an existing database — just run this whole
 -- file again; every statement in it is idempotent (if not exists / or
 -- replace / drop-then-create policy).
+
+-- ── Adding Phase 4 (Client Status Report) to an existing database ──
+-- Already have dashboard_links from Phase 3? Run this block (safe to run
+-- more than once), or just re-run this whole file — everything in it is
+-- idempotent:
+--
+--   alter table dashboard_links add column if not exists chat_webhook_url text;
+--   alter table dashboard_links add column if not exists report_recipients text;

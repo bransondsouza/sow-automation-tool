@@ -145,7 +145,41 @@ Example: to see how loaded up August is, set From = Aug 1, To = Aug 31 and
 leave Stage on "All stages" — the calendar, By Month cards, Delay %, and
 Busiest Day all narrow to just that window.
 
-## What's next (Phase 4)
+## Generate Client Status Report
 
-A "Generate Client Status Report" button that compiles a project's current
-KPIs into a new Slides deck and posts a notification to Google Chat.
+At the bottom of every project tab (not the All Projects rollup — this is
+per-project) is a **Generate Client Status Report** panel. Click **Generate
+Client Status Report** and it:
+
+1. Re-reads that project's tracker sheet live (the same data the rest of the
+   tab is built from) and builds a brand-new Google Slides deck from
+   scratch — no template required, and it's fully editable afterward. The
+   deck has a title slide, an Executive Summary (Overall Health, Task
+   Completion %, On-Time %, Overdue/Blocked counts, Upcoming Milestones,
+   Days to Deadline, Schedule Pace), a Deliverables Status table (RAG +
+   Current Stage + Tasks Completed per deliverable), an Upcoming & Risks
+   slide (overdue and Blocked tasks, and what's due in the next 7 days), and
+   — if there's resource data — a Resource Allocation table.
+2. If you filled in a **Google Chat webhook URL**, posts a summary with a
+   link to the deck to that space.
+3. If you filled in one or more **email addresses** (comma or
+   semicolon-separated), emails that same summary from your own Gmail, with
+   the deck attached as a PDF.
+
+Both notification fields are optional and independent — leave either blank
+to skip that channel, or leave both blank to just get the deck. A failure in
+one channel (bad webhook URL, Gmail not yet re-consented) never blocks the
+deck or the other channel — each result line shows success or the specific
+error separately.
+
+**Getting a Chat webhook URL:** in the target Google Chat space, open Apps &
+integrations → Webhooks → create one → copy the URL it gives you. That URL
+is itself the credential — anyone holding it can post to that space — so
+it's saved to that project's dashboard link (not shared across projects or
+accounts), and it comes back pre-filled next time you open this panel.
+
+**Gmail access:** sending requires the `gmail.send` permission, which only
+ever lets the app compose a brand-new message as you — it can't read or
+search your inbox. If you signed in before this feature was added, the
+first attempt will fail with a message asking you to sign out and back in
+once to grant it; after that it works normally.

@@ -85,5 +85,9 @@ export interface DashboardLink {
   sheet_url: string;
   label: string | null;
   source: "manual" | "bu_head";
+  // Phase 4 — remembered so the "Generate Client Status Report" panel comes
+  // back pre-filled next time.
+  chat_webhook_url: string | null;
+  report_recipients: string | null;
   created_at: string;
 }

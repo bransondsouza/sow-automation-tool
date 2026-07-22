@@ -27,6 +27,21 @@ import GoogleProvider from "next-auth/providers/google";
 // turned on for their own account at script.google.com/home/usersettings
 // (off by default) — see DEPLOYMENT_GUIDE.md. If either is missing, the
 // spreadsheet still generates fine; only the in-sheet button is skipped.
+//
+// gmail.send (Phase 4) lets the app send the "Generate Client Status
+// Report" email as the signed-in employee's own Gmail — not a shared
+// mailbox — and only ever composes a *new* message; it cannot read, list,
+// or search anything already in that person's mailbox. Requires the Gmail
+// API enabled in Google Cloud (see DEPLOYMENT_GUIDE.md). Anyone who signed
+// in before this scope was added needs to sign out and back in once to
+// re-consent — until then, the email step of a status report fails
+// non-fatally (the Slides deck and Chat message still go out).
+//
+// Note: the Phase 4 Chat notification does NOT use an OAuth scope. It posts
+// to a plain incoming webhook URL (a per-space credential you create in
+// Google Chat itself) instead of the Chat API, specifically so this list
+// doesn't need a chat.* scope at all — one fewer permission every employee
+// has to consent to.
 const GOOGLE_SCOPES = [
   "openid",
   "email",
@@ -35,7 +50,7 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive",
   "https://www.googleapis.com/auth/script.projects",
-  "https://www.googleapis.com/auth/chat.messages.create",
+  "https://www.googleapis.com/auth/gmail.send",
 ].join(" ");
 
 interface RefreshableToken {

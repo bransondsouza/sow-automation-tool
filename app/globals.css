@@ -758,3 +758,30 @@ button:disabled {
   color: var(--muted);
   font-weight: 600;
 }
+
+/* ── Client Status Report panel (Phase 4) ── */
+.report-panel {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.report-panel label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+
+.report-result {
+  margin-top: 12px;
+}
+
+.report-result p {
+  margin: 6px 0;
+}
+
+.report-result .error-box {
+  margin: 6px 0;
+}

@@ -455,7 +455,11 @@ export default function DashboardPage() {
           )}
 
           {activeTab !== "all" && activeProject && (
-            <ProjectView project={activeProject} onRemove={() => handleRemove(activeProject.sheetId)} />
+            <ProjectView
+              project={activeProject}
+              link={links.find((l) => l.sheet_id === activeProject.sheetId)}
+              onRemove={() => handleRemove(activeProject.sheetId)}
+            />
           )}
         </>
       )}
@@ -570,7 +574,15 @@ function RollupView({
   );
 }
 
-function ProjectView({ project, onRemove }: { project: ProjectSnapshot; onRemove: () => void }) {
+function ProjectView({
+  project,
+  link,
+  onRemove,
+}: {
+  project: ProjectSnapshot;
+  link?: DashboardLink;
+  onRemove: () => void;
+}) {
   const k = project.kpis;
 
   return (
@@ -703,6 +715,122 @@ function ProjectView({ project, onRemove }: { project: ProjectSnapshot; onRemove
             </>
           )}
         </>
+      )}
+
+      <StatusReportPanel project={project} link={link} />
+    </div>
+  );
+}
+
+function StatusReportPanel({ project, link }: { project: ProjectSnapshot; link?: DashboardLink }) {
+  const [chatWebhookUrl, setChatWebhookUrl] = useState(link?.chat_webhook_url ?? "");
+  const [recipients, setRecipients] = useState(link?.report_recipients ?? "");
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    slidesUrl: string;
+    chat: { attempted: boolean; ok: boolean; error?: string };
+    email: { attempted: boolean; ok: boolean; error?: string; recipientCount: number };
+  } | null>(null);
+
+  // Reset the panel when the person switches to a different project's tab.
+  useEffect(() => {
+    setChatWebhookUrl(link?.chat_webhook_url ?? "");
+    setRecipients(link?.report_recipients ?? "");
+    setResult(null);
+    setError(null);
+  }, [link?.id, link?.chat_webhook_url, link?.report_recipients]);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/dashboard/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheetLink: project.sheetUrl,
+          chatWebhookUrl: chatWebhookUrl.trim() || undefined,
+          recipients: recipients.trim() || undefined,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Could not generate the report.");
+      setResult(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error generating the report.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="report-panel">
+      <h2>Generate Client Status Report</h2>
+      <p className="hint" style={{ marginTop: -8 }}>
+        Builds a fresh Slides deck from this project's current numbers. Chat and email are both optional —
+        fill in either, both, or neither and just get the deck.
+      </p>
+
+      <div className="inline-form-row" style={{ marginTop: 12, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="chatWebhookUrl">Google Chat webhook URL (optional)</label>
+          <input
+            id="chatWebhookUrl"
+            type="text"
+            placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=..."
+            value={chatWebhookUrl}
+            onChange={(e) => setChatWebhookUrl(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="inline-form-row" style={{ marginTop: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="reportRecipients">Email recipients (optional)</label>
+          <input
+            id="reportRecipients"
+            type="text"
+            placeholder="client@company.com, pm@company.com"
+            value={recipients}
+            onChange={(e) => setRecipients(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <button type="button" onClick={handleGenerate} disabled={generating} style={{ marginTop: 12 }}>
+        {generating ? "Generating…" : "Generate Client Status Report"}
+      </button>
+
+      {error && (
+        <div className="error-box" style={{ marginTop: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="report-result">
+          <p>
+            ✅ Deck ready —{" "}
+            <a href={result.slidesUrl} target="_blank" rel="noreferrer">
+              open in Google Slides
+            </a>
+          </p>
+          {result.chat.attempted &&
+            (result.chat.ok ? (
+              <p className="hint">✅ Posted to Google Chat.</p>
+            ) : (
+              <div className="error-box">⚠️ Chat notification failed: {result.chat.error}</div>
+            ))}
+          {result.email.attempted &&
+            (result.email.ok ? (
+              <p className="hint">
+                ✅ Emailed {result.email.recipientCount} recipient{result.email.recipientCount === 1 ? "" : "s"}.
+              </p>
+            ) : (
+              <div className="error-box">⚠️ Email failed: {result.email.error}</div>
+            ))}
+        </div>
       )}
     </div>
   );

@@ -9,11 +9,11 @@ Statement of Work (PDF or Word), and the tool automatically produces:
 2. A **Google Sheets** project plan and tracker (2 tabs, fixed format, dropdowns, formulas)
 3. A live **HTML dashboard** that reads that Sheet and shows KPIs, plus a button that
    exports a client-ready status report to Google Slides and pings the team on
-   Google Chat.
+   Google Chat and Gmail.
 
 It is built in four phases so each piece is working and testable before the next
 is added. This document describes the target end state; the current build covers
-**Phases 1–3** in full working code, with Phase 4 scoped and ready to build next.
+**all four phases** in full working code.
 
 ---
 
@@ -27,7 +27,7 @@ is added. This document describes the target end state; the current build covers
 | File parsing | `pdf-parse` (PDF) and `mammoth` (.docx) | Extract raw text from the uploaded SOW before it goes to the AI. |
 | AI extraction | **Anthropic Claude API** | Reads the raw SOW text and returns structured JSON (project name, client, deliverables, timeline, risks, etc.) that the rest of the pipeline uses to fill in the deck and sheet. |
 | Slides/Sheets generation | **Google Slides API** + **Google Sheets API** + **Google Drive API** | Programmatically duplicates your template and fills in the placeholders, or builds the tracker sheet with formulas and dropdowns already in place. |
-| Notifications | **Google Chat API** (webhook or app) | Phase 4: posts to a space when a client report is generated. |
+| Notifications | **Google Chat** (incoming webhook) + **Gmail API** | Phase 4: posts to a space and/or emails a client-ready summary (with the deck attached as PDF) when a status report is generated. |
 
 Nothing here needs you to run a server, manage Docker, or touch a terminal after
 the one-time setup. Day to day, employees only ever see the web page.
@@ -90,6 +90,11 @@ Status Report" button and the Chat notification.
   call (view access) made at generation time using the uploader's own
   identity — the same as that employee sharing the file by hand. No
   standing access is granted beyond that one file.
+- **Gmail send scope (`gmail.send`, Phase 4)** only ever composes a brand-new
+  message as the signed-in employee — it cannot read, list, or search
+  anything already in that person's mailbox. A Chat webhook URL is itself
+  the credential for that channel (anyone holding the link can post to that
+  space), so it's stored per-project like a sheet link, not shared globally.
 
 ---
 
@@ -168,10 +173,25 @@ Tracking sheet:
   who's overloaded across a BU Head's whole portfolio, not just one project.
 See `DASHBOARD.md` for the full explanation.
 
-**Phase 4 — Client report export + Chat notification**
-"Generate Client Status Report" button compiles the live KPIs into a new
-Slides deck, and posts a message to the project's Google Chat space (pulled
-from the roster set up in Phase 2) confirming it's ready.
+**Phase 4 — Client report export + Chat/Gmail notification ✅ built**
+A **Generate Client Status Report** button on each project's dashboard tab
+builds a brand-new, fully-editable Slides deck from scratch (no template) —
+title slide, executive summary, deliverables table, upcoming & risks, and
+resource allocation — straight from that project's live KPIs, the same ones
+the dashboard shows. Two notification channels are optional, independent,
+and best-effort on top of the deck (a failure in one never blocks the other
+or the deck itself):
+- **Google Chat** — a plain incoming webhook URL (Space → Apps &
+  integrations → Webhooks in Google Chat), posted to with a summary and a
+  link to the deck. Deliberately not the OAuth Chat API, which would require
+  registering and publishing a full Chat app just to post a message.
+- **Gmail** — sent as the signed-in employee's own Gmail (never a shared
+  mailbox, and only ever composes a new message — nothing is read or
+  searched), with the deck exported to PDF via Drive and attached, plus an
+  HTML summary and a link to the live deck.
+Whatever webhook URL and recipient list were used are saved back onto that
+project's dashboard link, so the panel comes back pre-filled next time. See
+`DASHBOARD.md` for the full explanation.
 
 ---
 
@@ -180,8 +200,10 @@ from the roster set up in Phase 2) confirming it's ready.
 - **Now (Phase 1):** A Google Cloud project (personal Gmail is fine to start),
   an Anthropic API key, a Supabase account, a Vercel account.
 - **Phase 2:** Nothing new — same accounts.
-- **Phase 4:** A Google Chat space per project (or one shared space to start)
-  and its webhook URL, or Chat app credentials if you want richer bot messages.
+- **Phase 4:** The Gmail API enabled in the same Google Cloud project (see
+  the deployment guide), and, only if you want the Chat notification, a
+  webhook URL from a Google Chat space (Space → Apps & integrations →
+  Webhooks) — no new account or paid tier needed for either.
 
 Every account above is free to create and has a free tier sufficient for
 testing.
