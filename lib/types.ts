@@ -69,6 +69,7 @@ export interface Job {
   sheet_id: string | null;
   bu_head_name: string | null;
   bu_head_email: string | null;
+  business_countries: string | null;
   script_error: string | null;
   error_message: string | null;
   created_at: string;

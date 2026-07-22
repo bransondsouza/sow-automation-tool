@@ -19,6 +19,11 @@ create table if not exists jobs (
   bu_head_email text,
   script_error text,
   error_message text,
+  -- Comma-separated ISO 3166-1 alpha-2 codes (e.g. "IN,US,ZA") picked on the
+  -- Upload form, used to build the holiday calendar the tracker's Baseline
+  -- Date schedule (and Plan Date validation) skips. Null/empty = weekends
+  -- only, no country holidays excluded.
+  business_countries text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -136,3 +141,9 @@ create policy "Users can manage their own dashboard links"
 --
 --   alter table dashboard_links add column if not exists chat_webhook_url text;
 --   alter table dashboard_links add column if not exists report_recipients text;
+
+-- ── Adding business-day/holiday-aware scheduling to an existing database ──
+-- Already have the jobs table from Phase 1? Run this block (safe to run
+-- more than once), or just re-run this whole file:
+--
+--   alter table jobs add column if not exists business_countries text;

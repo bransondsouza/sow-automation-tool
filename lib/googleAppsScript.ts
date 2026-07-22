@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { buildHolidayMap } from "./holidays";
 
 function buildAuthClient(accessToken: string) {
   const oauth2Client = new google.auth.OAuth2();
@@ -25,8 +26,18 @@ function buildAuthClient(accessToken: string) {
 //  - live-recomputes a deliverable row's RAG + Current Stage the moment any
 //    of its Baseline/Plan/Actual/Status cells change, without waiting for
 //    the next full regenerate.
+//  - warns (with an override option) when someone types a Plan Date that
+//    falls on a weekend or a public holiday in one of the countries chosen
+//    on the Upload form.
+//
+// HOLIDAYS is computed server-side (lib/holidays.ts, via the date-holidays
+// npm package — Apps Script's sandbox has no npm access) at the moment this
+// script is attached, and baked into the source as a plain JS object
+// literal below. It's a one-time snapshot covering a multi-year window, not
+// a live lookup — see attachTrackerScript's doc comment for why.
 // ─────────────────────────────────────────────────────────────────────────
-const CODE_GS = `
+function buildCodeGs(holidaysJson: string): string {
+  return `
 var EST_SHEET_NAME = 'Estimation & Resource Allocation';
 var TRACK_SHEET_NAME = 'Project Tracking & Execution';
 var LISTS_SHEET_NAME = 'Lists';
@@ -34,6 +45,62 @@ var EST_FIRST_ROW = 5;
 var EST_COPY_COL = 8; // column H
 var TRACK_LEADING_COLS = 10; // A Deliverable, B-H spare (7), I RAG, J Current Stage
 var TRACK_COLS_PER_TASK = 6; // Assigned To, Hours, Baseline, Plan, Actual, Status
+
+// date ('YYYY-MM-DD') -> [{country, name}] — every holiday, across every
+// country chosen at generation time, that falls on that date.
+var HOLIDAYS = ${holidaysJson};
+
+// ─────────────────────── Business-day helpers ───────────────────────
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function dateKey(d) {
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
+function isWeekend(d) {
+  var day = d.getDay();
+  return day === 0 || day === 6;
+}
+
+function holidaysOn(d) {
+  return HOLIDAYS[dateKey(d)] || null;
+}
+
+function isBusinessDay(d) {
+  return !isWeekend(d) && !holidaysOn(d);
+}
+
+// Rolls forward (never backward) to the next date that isn't a weekend or
+// a holiday — returns \`d\` itself if it already qualifies.
+function nextBusinessDay(d) {
+  var next = new Date(d.getTime());
+  while (!isBusinessDay(next)) next = addDays(next, 1);
+  return next;
+}
+
+// The date that is the \`count\`-th business day starting from (and
+// including, if it already qualifies) \`start\`.
+function addBusinessDays(start, count) {
+  var d = nextBusinessDay(start);
+  var found = 1;
+  while (found < count) {
+    d = addDays(d, 1);
+    if (isBusinessDay(d)) found++;
+  }
+  return d;
+}
+
+// Human-readable reason a date isn't a business day, or null if it is one.
+function nonBusinessDayReason(d) {
+  var holidays = holidaysOn(d);
+  if (holidays) {
+    var parts = holidays.map(function (h) { return h.country + ': ' + h.name; });
+    return 'a public holiday (' + parts.join('; ') + ')';
+  }
+  if (isWeekend(d)) return 'a weekend';
+  return null;
+}
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -277,10 +344,14 @@ function generateProjectTracker() {
       if (task) {
         var baseline = null;
         if (cursor) {
-          baseline = cursor;
+          // Never START a task on a weekend/holiday — roll forward to the
+          // next real business day first.
+          baseline = nextBusinessDay(cursor);
           if (task.days > 0) {
-            var baselineEnd = addDays(cursor, task.days - 1);
-            cursor = addDays(baselineEnd, 1);
+            var baselineEnd = addBusinessDays(baseline, task.days);
+            cursor = addDays(baselineEnd, 1); // next task's nextBusinessDay() call rolls this forward if needed
+          } else {
+            cursor = baseline;
           }
         }
 
@@ -450,6 +521,10 @@ function handleTrackingEdit(sheet, range) {
   var slotIndex = Math.floor((offset - 1) / TRACK_COLS_PER_TASK);
   if (slotIndex >= slotCount) return;
 
+  if (withinBlock === 3) {
+    checkPlanDate(range);
+  }
+
   if (withinBlock === 5) {
     var newStatus = String(range.getValue() || '');
     if (isCompletedStatus(newStatus)) {
@@ -460,6 +535,27 @@ function handleTrackingEdit(sheet, range) {
 
   if (withinBlock >= 2) {
     recomputeRowStatus(sheet, row, slotCount);
+  }
+}
+
+// Only Plan Date gets this treatment — Baseline Date is already generated
+// business-day-aware by the script itself, and Actual Date records what
+// really happened, holiday or not.
+function checkPlanDate(range) {
+  var value = range.getValue();
+  if (!(value instanceof Date)) return; // cleared, or not a real date yet
+
+  var reason = nonBusinessDayReason(value);
+  if (!reason) return;
+
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.alert(
+    'Plan Date falls on ' + reason,
+    'Keep this Plan Date anyway, or clear it and pick a different date?',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) {
+    range.setValue('');
   }
 }
 
@@ -491,6 +587,7 @@ function recomputeRowStatus(sheet, row, slotCount) {
   }
 }
 `;
+}
 
 const MANIFEST_JSON = JSON.stringify({
   timeZone: "Etc/UTC",
@@ -503,7 +600,19 @@ const MANIFEST_JSON = JSON.stringify({
  * pushes the Code.gs source above into it. This is what makes the
  * "Project Tracker Tools ▸ Generate Project Tracker" menu appear the next
  * time anyone opens the sheet, and wires up the onEdit automations (copy
- * button, auto Actual Date, live RAG updates).
+ * button, auto Actual Date, live RAG updates, Plan Date holiday warnings).
+ *
+ * `countryCodes` (ISO 3166-1 alpha-2, e.g. ["IN","US","ZA"]) drives the
+ * holiday table baked into the script — see lib/holidays.ts. Pass an empty
+ * array (or omit) for "weekends only, no country holidays." This is a
+ * one-time snapshot taken now, not a live lookup: Apps Script's sandbox
+ * can't reach npm packages, and Project Start/End Date aren't filled in yet
+ * at this point in the flow (the PM sets them after upload), so there's no
+ * real project date range to scope it to. The window is generous (current
+ * year -1 to +6) specifically to absorb that uncertainty — see YEARS_BACK /
+ * YEARS_FORWARD in lib/holidays.ts. Per-project country choice only applies
+ * going forward; an already-generated sheet keeps whatever was baked in
+ * when it was created.
  *
  * Requires: the Apps Script API enabled in Google Cloud, the
  * `script.projects` OAuth scope, AND the signed-in user must have "Google
@@ -511,9 +620,16 @@ const MANIFEST_JSON = JSON.stringify({
  * (off by default on many accounts) — otherwise this throws, which callers
  * should treat as non-fatal since the spreadsheet itself is already usable.
  */
-export async function attachTrackerScript(accessToken: string, spreadsheetId: string): Promise<void> {
+export async function attachTrackerScript(
+  accessToken: string,
+  spreadsheetId: string,
+  countryCodes: string[] = []
+): Promise<void> {
   const auth = buildAuthClient(accessToken);
   const script = google.script({ version: "v1", auth });
+
+  const holidayMap = buildHolidayMap(countryCodes);
+  const codeGs = buildCodeGs(JSON.stringify(holidayMap));
 
   const createResponse = await script.projects.create({
     requestBody: {
@@ -531,7 +647,7 @@ export async function attachTrackerScript(accessToken: string, spreadsheetId: st
     scriptId,
     requestBody: {
       files: [
-        { name: "Code", type: "SERVER_JS", source: CODE_GS },
+        { name: "Code", type: "SERVER_JS", source: codeGs },
         { name: "appsscript", type: "JSON", source: MANIFEST_JSON },
       ],
     },

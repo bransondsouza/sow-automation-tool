@@ -42,6 +42,10 @@ export async function POST(req: NextRequest) {
   const buHeadEmail = ((formData.get("buHeadEmail") as string | null) || "").trim();
   // Email is the key used for sharing + dashboard lookups; name is just a label.
   const buHead = buHeadEmail ? { name: buHeadName || buHeadEmail, email: buHeadEmail } : undefined;
+  const businessCountriesInput = ((formData.get("businessCountries") as string | null) || "").trim();
+  const businessCountries = businessCountriesInput
+    ? businessCountriesInput.split(",").map((c) => c.trim()).filter((c) => c.length > 0)
+    : [];
 
   if (!file) {
     return NextResponse.json({ error: "No file was uploaded." }, { status: 400 });
@@ -67,6 +71,7 @@ export async function POST(req: NextRequest) {
       original_filename: file.name,
       bu_head_name: buHead?.name ?? null,
       bu_head_email: buHead?.email ?? null,
+      business_countries: businessCountries.length > 0 ? businessCountries.join(",") : null,
     })
     .select()
     .single();
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
     // invalid BU Head email, etc.) shouldn't fail the whole job.
     let scriptError: string | null = null;
     try {
-      await attachTrackerScript(session.accessToken, sheet.spreadsheetId);
+      await attachTrackerScript(session.accessToken, sheet.spreadsheetId, businessCountries);
     } catch (err) {
       console.error("Could not attach the tracker script:", err);
       scriptError =

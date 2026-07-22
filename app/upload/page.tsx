@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import CountryPicker from "./CountryPicker";
 
 export default function UploadPage() {
   const { data: session } = useSession();
@@ -13,6 +14,7 @@ export default function UploadPage() {
   const [teamRoster, setTeamRoster] = useState("");
   const [buHeadName, setBuHeadName] = useState("");
   const [buHeadEmail, setBuHeadEmail] = useState("");
+  const [businessCountries, setBusinessCountries] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +37,7 @@ export default function UploadPage() {
     if (teamRoster.trim()) formData.append("teamRoster", teamRoster.trim());
     if (buHeadName.trim()) formData.append("buHeadName", buHeadName.trim());
     if (buHeadEmail.trim()) formData.append("buHeadEmail", buHeadEmail.trim());
+    if (businessCountries.length > 0) formData.append("businessCountries", businessCountries.join(","));
 
     setSubmitting(true);
     try {
@@ -126,6 +129,16 @@ export default function UploadPage() {
           <p className="hint">
             The tracker gets automatically shared with this email, and this
             project shows up under their name on the multi-project dashboard.
+          </p>
+
+          <label htmlFor="businessCountries">Exclude holidays of these countries (optional)</label>
+          <CountryPicker value={businessCountries} onChange={setBusinessCountries} />
+          <p className="hint">
+            The tracker's Baseline Date schedule skips weekends automatically.
+            Pick one or more countries here and it skips their public
+            holidays too — and typing a Plan Date that lands on a weekend or
+            one of those holidays will ask you to confirm before keeping it.
+            Leave this blank to skip weekends only.
           </p>
 
           <button type="submit" disabled={submitting}>

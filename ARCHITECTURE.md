@@ -27,6 +27,7 @@ is added. This document describes the target end state; the current build covers
 | File parsing | `pdf-parse` (PDF) and `mammoth` (.docx) | Extract raw text from the uploaded SOW before it goes to the AI. |
 | AI extraction | **Anthropic Claude API** | Reads the raw SOW text and returns structured JSON (project name, client, deliverables, timeline, risks, etc.) that the rest of the pipeline uses to fill in the deck and sheet. |
 | Slides/Sheets generation | **Google Slides API** + **Google Sheets API** + **Google Drive API** | Programmatically duplicates your template and fills in the placeholders, or builds the tracker sheet with formulas and dropdowns already in place. |
+| Business-day scheduling | **date-holidays** (npm) | Computes each selected country's public holidays server-side (Apps Script's sandbox has no npm access) and bakes the result into the tracker's in-sheet script at generation time — see the Phase 2 write-up below. |
 | Notifications | **Google Chat** (incoming webhook) + **Gmail API** | Phase 4: posts to a space and/or emails a client-ready summary (with the deck attached as PDF) when a status report is generated. |
 
 Nothing here needs you to run a server, manage Docker, or touch a terminal after
@@ -95,6 +96,11 @@ Status Report" button and the Chat notification.
   anything already in that person's mailbox. A Chat webhook URL is itself
   the credential for that channel (anyone holding the link can post to that
   space), so it's stored per-project like a sheet link, not shared globally.
+- **Business-day scheduling adds no new OAuth scope and no new external
+  dependency.** `date-holidays`' holiday data ships inside the npm package
+  itself — nothing is fetched over the network at request time, so there's
+  no new third-party service in the request path and no new account to set
+  up in Google Cloud.
 
 ---
 
@@ -145,6 +151,23 @@ on the Upload form gets written into the sheet and the sheet is auto-shared
 with that person. A separate `/drive-folders` page lets anyone paste a
 parent folder link and a list of names to batch-create subfolders. See
 `SHEETS_TRACKER.md` for the full layout.
+
+**Business-day scheduling.** An optional multi-select on the Upload form
+("Exclude holidays of these countries," backed by `date-holidays`, ~200
+countries) lets the uploader pick which countries' public holidays the
+schedule should skip — weekends are always excluded regardless. Since
+Apps Script's sandbox can't reach npm packages, and the Project Start/End
+Date aren't filled in yet at upload time (the PM sets those on the
+Estimation tab afterward), the holiday calendar is computed server-side
+(Node, with real npm access) at the moment the tracker script is attached,
+then baked into that script's source as a static lookup table covering a
+generous multi-year window — a one-time snapshot, not a live API call.
+**Baseline Date** is generated using that table (never lands on a weekend
+or a selected country's holiday); **Plan Date** stays a manual field exactly
+as before, but typing one that lands on a weekend or holiday now triggers an
+in-sheet confirmation prompt with an override. This only applies to new
+uploads — regenerating an existing sheet doesn't refresh its baked-in
+holiday table or add the country picker retroactively.
 
 **Phase 3 — HTML Dashboard ✅ built**
 A `/dashboard` page where a user adds project sheets two ways: pasting a

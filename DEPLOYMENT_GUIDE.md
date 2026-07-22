@@ -34,6 +34,16 @@ new Gmail permission — until they do, the email step of a status report
 fails with a message telling them so (the Slides deck and Chat notification
 still work either way).
 
+**Already deployed and just pulled the business-day scheduling update
+(holiday-aware Baseline Date + Plan Date warnings)?** Just two things: (1)
+run the "Adding business-day/holiday-aware scheduling" migration block at
+the bottom of `supabase/schema.sql`, (2) `git push` and redeploy — Vercel
+installs the new `date-holidays` npm dependency automatically as part of
+`npm install`. Nothing to do in Google Cloud: no new API, no new OAuth
+scope, no account to sign up for — the holiday data ships inside the npm
+package itself. This only affects **new** uploads going forward; sheets
+generated before this update keep their original weekends-only schedule.
+
 ---
 
 ## What you'll create, in order

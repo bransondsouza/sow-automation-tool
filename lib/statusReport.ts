@@ -29,6 +29,10 @@ function box(x: number, y: number, w: number, h: number) {
 
 // A fresh counter per call (not module-level) so concurrent report
 // generations in the same warm serverless instance never collide on IDs.
+// Google Slides rejects any custom object ID shorter than 5 characters, so
+// every prefix passed in here must itself be at least 4 characters long
+// (plus a digit) to stay safe at every counter value — "tb"/"tbl" style
+// short prefixes are NOT safe (e.g. "tb2" is only 3 characters).
 function createIdGenerator() {
   let n = 0;
   return (prefix: string) => {
@@ -54,7 +58,7 @@ function addTextBox(
   text: string,
   opts: TextBoxOptions = {}
 ): void {
-  const id = nextId("tb");
+  const id = nextId("shape");
   requests.push({
     createShape: {
       objectId: id,
@@ -103,7 +107,7 @@ function addTable(
   headers: string[],
   rows: string[][]
 ): void {
-  const id = nextId("tbl");
+  const id = nextId("table");
   const rowCount = rows.length + 1;
   const colCount = headers.length;
 

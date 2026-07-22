@@ -785,3 +785,70 @@ button:disabled {
 .report-result .error-box {
   margin: 6px 0;
 }
+
+/* ── Country picker (Upload form, business-day scheduling) ── */
+.country-picker {
+  margin-top: 4px;
+}
+
+.country-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.country-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 6px 3px 12px;
+  font-size: 13px;
+  color: var(--navy);
+}
+
+.country-chip button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px;
+  margin: 0;
+}
+
+.country-chip button:hover {
+  color: var(--navy);
+}
+
+.country-picker-list {
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.country-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.country-picker-option:hover {
+  background: var(--bg);
+}
+
+.country-picker-option input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}

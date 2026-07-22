@@ -90,7 +90,9 @@ to Help) → **Generate Project Tracker**. What it does:
    everything tidiest.)
 3. Calculates **Baseline Date** for every task by cascading sequentially
    from the Project Start Date + that task's own Estimated Days, task by
-   task, within each deliverable.
+   task, within each deliverable — **skipping weekends automatically**, and
+   skipping the public holidays of whichever countries you picked on the
+   Upload form's "Exclude holidays of these countries" field (see below).
 4. Computes **RAG** and **Current Stage** for each deliverable (see below).
 5. **Preserves your work**: Assigned To, Hours Allocated, Plan Date, Actual
    Date, and Status are kept for any (deliverable, task name) pair that
@@ -139,6 +141,31 @@ every task is Completed.
   filled in automatically.
 - **Calendar picker**: click into any Baseline/Plan/Actual/Project date
   cell and Sheets shows a date picker — no need to type dates by hand.
+
+### Business-day scheduling (weekends + holidays)
+
+**Baseline Date** is fully automatic and always business-day-aware: it
+never lands on a weekend, and it never lands on a public holiday for any
+country you selected on the Upload form's "Exclude holidays of these
+countries" field when this project was uploaded. If you didn't pick any
+countries, it still skips weekends — country holidays are the opt-in part,
+weekends are always excluded.
+
+**Plan Date stays exactly what it's always been: a manual field you fill in
+yourself** — the tracker doesn't calculate it or overwrite it. The one thing
+that's new is a check: type (or paste) a Plan Date that lands on a weekend
+or one of those countries' public holidays, and Sheets pops up a prompt —
+*"Plan Date falls on a weekend"* or *"...a public holiday (India: Diwali)"*
+— asking whether to keep it anyway. Choose **Yes** to keep the date as
+typed, or **No** to clear the cell and pick a different date. **Baseline**
+and **Actual** dates are never checked this way — Baseline can't be wrong by
+construction, and Actual records what really happened, holiday or not.
+
+The holiday calendar itself is computed once, at upload time, from the
+countries you picked — see `ARCHITECTURE.md` for why it's a snapshot rather
+than a live lookup, and note that this only applies to **new** uploads;
+sheets generated before this feature keeps their original weekends-only
+schedule unless you regenerate the project.
 
 ## Tab 3: Lists (hidden)
 
