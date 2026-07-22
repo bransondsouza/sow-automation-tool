@@ -101,6 +101,7 @@ export interface RollupKpis {
   totalBlockedTasks: number;
   totalUpcomingMilestones: number;
   resourceHours: { name: string; hours: number; projectCount: number }[];
+  statusBreakdown: StatusCount[];
 }
 
 // ─────────────────────────────── Fetching ───────────────────────────────
@@ -394,6 +395,7 @@ export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
   let blocked = 0;
   let upcoming = 0;
   const hoursMap = new Map<string, { hours: number; projects: Set<string> }>();
+  const statusMap = new Map<string, number>();
 
   projects.forEach((p) => {
     ragCounts[p.kpis.overallRag] += 1;
@@ -407,11 +409,18 @@ export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
       entry.projects.add(p.sheetId);
       hoursMap.set(r.name, entry);
     });
+    p.kpis.statusBreakdown.forEach((s) => {
+      statusMap.set(s.status, (statusMap.get(s.status) ?? 0) + s.count);
+    });
   });
 
   const resourceHours = Array.from(hoursMap.entries())
     .map(([name, v]) => ({ name, hours: Math.round(v.hours * 10) / 10, projectCount: v.projects.size }))
     .sort((a, b) => b.hours - a.hours);
+
+  const statusBreakdown = Array.from(statusMap.entries())
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => b.count - a.count);
 
   return {
     projectCount: projects.length,
@@ -421,5 +430,6 @@ export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
     totalBlockedTasks: blocked,
     totalUpcomingMilestones: upcoming,
     resourceHours,
+    statusBreakdown,
   };
 }

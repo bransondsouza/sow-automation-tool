@@ -167,6 +167,20 @@ export default function DeliveryCalendar({
     setPageStart(new Date(now.getFullYear(), now.getMonth(), 1));
   }
 
+  // Clicking the Busiest Day KPI acts like clicking that date on the
+  // calendar itself — selects it (showing its task list below), and pages
+  // the calendar over to its month first if it isn't currently in view.
+  function jumpToBusiest() {
+    if (!busiest) return;
+    const d = new Date(busiest.date);
+    if (isNaN(d.getTime())) return;
+    const monthsFromPageStart = (d.getFullYear() - pageStart.getFullYear()) * 12 + (d.getMonth() - pageStart.getMonth());
+    if (monthsFromPageStart < 0 || monthsFromPageStart >= MONTHS_PER_PAGE) {
+      setPageStart(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+    setSelectedDate((prev) => (prev === busiest.date ? null : busiest.date));
+  }
+
   function resetFilters() {
     setDateFrom("");
     setDateTo("");
@@ -227,11 +241,17 @@ export default function DeliveryCalendar({
             {filteredEvents.filter((e) => e.overdue).length} of {filteredEvents.length} tasks overdue
           </div>
         </div>
-        <div className="kpi-card">
+        <button
+          type="button"
+          className="kpi-card kpi-card-clickable"
+          onClick={jumpToBusiest}
+          disabled={!busiest}
+          title={busiest ? `Jump to ${busiest.date} and show what's due` : undefined}
+        >
           <div className="kpi-label">Busiest Day</div>
           <div className="kpi-value">{busiest ? busiest.count : "—"}</div>
           <div className="kpi-sub">{busiest ? busiest.date : "No deliveries in range"}</div>
-        </div>
+        </button>
         <div className="kpi-card">
           <div className="kpi-label">In Range</div>
           <div className="kpi-value">{filteredEvents.length}</div>

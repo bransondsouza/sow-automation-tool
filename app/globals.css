@@ -852,3 +852,81 @@ button:disabled {
   width: auto;
   margin: 0;
 }
+
+/* ── Click-to-filter dashboard interactivity ── */
+.kpi-card-clickable {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.kpi-card-clickable:hover:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(29, 78, 109, 0.15);
+  transform: translateY(-1px);
+}
+
+.kpi-card-clickable:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background: var(--bg);
+}
+
+.filter-panel {
+  margin-top: 20px;
+  padding: 16px 18px;
+  background: var(--bg);
+  border: 1.5px solid var(--navy);
+  border-radius: var(--radius);
+}
+
+.filter-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 6px 3px 12px;
+  font-size: 13px;
+  color: var(--navy);
+  font-weight: 600;
+}
+
+.filter-chip button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px;
+  margin: 0;
+}
+
+.filter-chip button:hover {
+  color: var(--navy);
+}

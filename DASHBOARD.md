@@ -89,23 +89,50 @@ always consistent with what you see when the sheet is open.
 Every KPI above also has a visual next to it — hover any chart for exact
 values (Chart.js's built-in tooltips):
 
-- **Deliverable Health** (donut) — deliverables by RAG.
+- **Deliverable Health** (donut) — deliverables by RAG. *Clickable.*
+- **Tasks by Health (RAG)** (donut) — the same Red/Amber/Gray/Green split,
+  but counted by task instead of by deliverable (each task inherits its
+  parent deliverable's RAG), with a percentage in every tooltip — e.g. "25%
+  Green, 50% Amber, 25% Red." This is the task-weighted view; a deliverable
+  with many tasks counts more here than a deliverable with one. *Clickable.*
 - **Task Status Breakdown** (bar) — how many tasks currently sit in each
   Status value from the Lists tab (Completed, WIP, Blocked, On Hold, YTS,
-  or any custom status you've added).
+  or any custom status you've added). *Clickable.*
 - **Burndown — Ideal Pace vs Actual** (line) — a dashed "ideal pace" line
   (linear from Project Start to Project End) against a solid "actual" line
   built from tasks' real Actual Dates. When the actual line sits below the
   ideal line, the project is behind; above it, ahead. Only shown once both
   project dates are set.
 - **Resource Allocation** (bar) — same hours-per-person data as the table
-  below it, as a quick visual scan.
+  below it, as a quick visual scan. *Clickable*, same as the table rows
+  underneath it.
 - **Deliverable Timeline** — a dependency-free Gantt-style strip: one bar
   per deliverable spanning its earliest to latest task Baseline Date,
   colored by RAG, against the Project Start → Project End axis, with a red
   marker for today. Hover a bar for its exact date range.
 - **Portfolio RAG** and **Resource Load Across Projects** (All Projects
-  tab) — the same idea, aggregated across your whole dashboard.
+  tab) — the same idea, aggregated across your whole dashboard. *Resource
+  Load Across Projects is clickable* the same as the per-project version.
+
+## Click-to-filter
+
+Charts marked *Clickable* above, and the Resource Allocation / Resource
+Load table rows, aren't just for looking at — click a slice, bar, or row
+and the tab filters down to just the matching tasks:
+
+- Click a RAG segment (on either RAG donut) to see only tasks whose
+  deliverable is that color.
+- Click a Status bar (e.g. **YTS**) to see only tasks with that status.
+- Click a person — on the Resource Allocation/Resource Load chart or table
+  row — to see only tasks assigned to them.
+
+A **filter panel** appears below the charts listing every active filter as
+a removable chip, plus a table of the matching tasks (deliverable, task,
+assigned to, status, baseline date — and project, on the All Projects tab).
+Filters combine: clicking a status and then a person narrows to tasks that
+match both. Click a chip's **×**, or click the same chart segment again, to
+clear that filter. Switching project tabs always starts fresh — filters
+don't carry over from one project to another.
 
 ## Delivery Calendar
 
@@ -133,7 +160,8 @@ months at a time**:
     (The main KPI grid's "Overdue Tasks" count is always for the whole
     project; this one moves with your filters.)
   - **Busiest Day** — the single date with the most deliveries in the
-    filtered range.
+    filtered range. Click the card to jump the calendar to that date and
+    open its click-through list, the same as clicking the date directly.
   - **In Range** — total task deliveries matching the current filters.
 
 The **By Month · Stage Breakdown** cards just above the calendar follow
@@ -153,10 +181,15 @@ Client Status Report** and it:
 
 1. Re-reads that project's tracker sheet live (the same data the rest of the
    tab is built from) and builds a brand-new Google Slides deck from
-   scratch — no template required, and it's fully editable afterward. The
-   deck has a title slide, an Executive Summary (Overall Health, Task
-   Completion %, On-Time %, Overdue/Blocked counts, Upcoming Milestones,
-   Days to Deadline, Schedule Pace), a Deliverables Status table (RAG +
+   scratch — no template required, and it's fully editable afterward.
+   Designed, not plain text: a branded navy/orange cover and closing slide,
+   a colored KPI card grid (Overall Health and Schedule Pace shown as
+   colored badges, Overdue/Blocked flagged in red when non-zero), and
+   colored RAG badges on the Deliverables table — using the same palette as
+   the dashboard itself. The deck has a title slide, an Executive Summary
+   (Overall Health, Task Completion %, On-Time %, Overdue/Blocked counts,
+   Upcoming Milestones, Days to Deadline, Schedule Pace), a Deliverables
+   Status table (RAG +
    Current Stage + Tasks Completed per deliverable), an Upcoming & Risks
    slide (overdue and Blocked tasks, and what's due in the next 7 days), and
    — if there's resource data — a Resource Allocation table.

@@ -192,6 +192,172 @@ const burndownOptions = {
   },
 };
 
+// Task-count-weighted RAG split — how many TASKS sit under a Red/Amber/
+// Green/Gray deliverable, as opposed to how many DELIVERABLES are each
+// color (that's what Deliverable Health / Portfolio RAG already show). A
+// project with one huge Red deliverable and three tiny Green ones looks
+// very different by task count than by deliverable count — this is the one
+// that answers "how much of the actual work is at risk."
+function buildTaskRagDonut(deliverables: { rag: string; tasks: unknown[] }[]) {
+  const counts: Record<string, number> = {};
+  deliverables.forEach((d) => {
+    const key = d.rag || "Not Started";
+    counts[key] = (counts[key] ?? 0) + d.tasks.length;
+  });
+  const labels = Object.keys(counts).filter((l) => counts[l] > 0);
+  return {
+    labels,
+    datasets: [
+      {
+        data: labels.map((l) => counts[l]),
+        backgroundColor: labels.map((l) => RAG_COLORS[l] ?? "#cbd5e1"),
+        borderWidth: 0,
+      },
+    ],
+  };
+}
+
+function taskRagTooltipLabel(ctx: { label?: string; parsed: number; dataset: { data: number[] } }): string {
+  const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+  const pct = total > 0 ? Math.round((ctx.parsed / total) * 100) : 0;
+  return `${ctx.label ?? ""}: ${ctx.parsed} task${ctx.parsed === 1 ? "" : "s"} (${pct}%)`;
+}
+
+const taskRagDonutOptions = {
+  plugins: {
+    legend: { position: "bottom" as const },
+    tooltip: { callbacks: { label: taskRagTooltipLabel } },
+  },
+};
+
+// ─────────────────────── Click-to-filter (tasks) ───────────────────────
+
+interface FlatTask {
+  projectName: string;
+  deliverableName: string;
+  deliverableRag: string;
+  taskLabel: string;
+  assignedTo: string;
+  status: string;
+  baseline: string;
+}
+
+// Matches the exact grouping keys used elsewhere (computeKpis'
+// statusBreakdown, buildTaskRagDonut) so a click always lines up 1:1 with
+// what's shown in the chart that was clicked.
+function flattenTasks(projects: ProjectSnapshot[]): FlatTask[] {
+  const out: FlatTask[] = [];
+  projects.forEach((p) => {
+    p.deliverables.forEach((d) => {
+      d.tasks.forEach((t) => {
+        out.push({
+          projectName: p.name,
+          deliverableName: d.name,
+          deliverableRag: d.rag || "Not Started",
+          taskLabel: t.slotLabel,
+          assignedTo: t.assignedTo,
+          status: t.status || "Unknown",
+          baseline: t.baseline,
+        });
+      });
+    });
+  });
+  return out;
+}
+
+interface TaskFilters {
+  status: string | null;
+  user: string | null;
+  rag: string | null;
+}
+
+const EMPTY_FILTERS: TaskFilters = { status: null, user: null, rag: null };
+
+function TaskFilterPanel({
+  projects,
+  filters,
+  onClear,
+  showProject,
+}: {
+  projects: ProjectSnapshot[];
+  filters: TaskFilters;
+  onClear: (key: keyof TaskFilters) => void;
+  showProject: boolean;
+}) {
+  const allTasks = useMemo(() => flattenTasks(projects), [projects]);
+
+  if (!filters.status && !filters.user && !filters.rag) return null;
+
+  const filtered = allTasks.filter((t) => {
+    if (filters.status && t.status !== filters.status) return false;
+    if (filters.user && t.assignedTo !== filters.user) return false;
+    if (filters.rag && t.deliverableRag !== filters.rag) return false;
+    return true;
+  });
+
+  return (
+    <div className="filter-panel">
+      <div className="filter-panel-header">
+        <h3 style={{ margin: 0 }}>Filtered Tasks ({filtered.length})</h3>
+        <div className="filter-chips">
+          {filters.status && (
+            <span className="filter-chip">
+              Status: {filters.status}
+              <button type="button" onClick={() => onClear("status")} aria-label="Clear status filter">
+                ×
+              </button>
+            </span>
+          )}
+          {filters.user && (
+            <span className="filter-chip">
+              Assigned To: {filters.user}
+              <button type="button" onClick={() => onClear("user")} aria-label="Clear assignee filter">
+                ×
+              </button>
+            </span>
+          )}
+          {filters.rag && (
+            <span className="filter-chip">
+              RAG: {filters.rag}
+              <button type="button" onClick={() => onClear("rag")} aria-label="Clear RAG filter">
+                ×
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="hint">No tasks match this filter.</p>
+      ) : (
+        <table className="data-table">
+          <thead>
+            <tr>
+              {showProject && <th>Project</th>}
+              <th>Deliverable</th>
+              <th>Task</th>
+              <th>Assigned To</th>
+              <th>Status</th>
+              <th>Baseline Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((t, i) => (
+              <tr key={i}>
+                {showProject && <td>{t.projectName}</td>}
+                <td>{t.deliverableName}</td>
+                <td>{t.taskLabel}</td>
+                <td>{t.assignedTo || "—"}</td>
+                <td>{t.status || "—"}</td>
+                <td>{t.baseline || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────── Page ──────────────────────────────
 
 export default function DashboardPage() {
@@ -456,6 +622,7 @@ export default function DashboardPage() {
 
           {activeTab !== "all" && activeProject && (
             <ProjectView
+              key={activeProject.sheetId}
               project={activeProject}
               link={links.find((l) => l.sheet_id === activeProject.sheetId)}
               onRemove={() => handleRemove(activeProject.sheetId)}
@@ -476,6 +643,17 @@ function RollupView({
   projects: ProjectSnapshot[];
   onSelect: (sheetId: string) => void;
 }) {
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+
+  function setFilter(key: keyof TaskFilters, value: string) {
+    setFilters((f) => ({ ...f, [key]: f[key] === value ? null : value }));
+  }
+  function clearFilter(key: keyof TaskFilters) {
+    setFilters((f) => ({ ...f, [key]: null }));
+  }
+
+  const allDeliverables = useMemo(() => projects.flatMap((p) => p.deliverables), [projects]);
+
   return (
     <div className="card">
       <h2>Portfolio Health</h2>
@@ -487,11 +665,38 @@ function RollupView({
         <KpiCard label="Upcoming Milestones" value={rollup.totalUpcomingMilestones} sub="Next 7 days" />
       </div>
 
+      <p className="hint" style={{ marginTop: 4 }}>
+        Click a status bar, a name on the resource chart, or a slice of "Tasks by Health" below to filter
+        the task list further down the page to just that.
+      </p>
+
       <div className="chart-grid">
         <div className="chart-card">
           <h3>Portfolio RAG</h3>
           <ChartCanvas type="doughnut" data={buildPortfolioRagDonut(rollup.ragCounts)} options={donutOptions} height={220} />
         </div>
+        <div className="chart-card">
+          <h3>Tasks by Health (RAG)</h3>
+          <ChartCanvas
+            type="doughnut"
+            data={buildTaskRagDonut(allDeliverables)}
+            options={taskRagDonutOptions}
+            height={220}
+            onElementClick={(label) => setFilter("rag", label)}
+          />
+        </div>
+        {rollup.statusBreakdown.length > 0 && (
+          <div className="chart-card">
+            <h3>Task Status Breakdown</h3>
+            <ChartCanvas
+              type="bar"
+              data={buildStatusBar(rollup.statusBreakdown)}
+              options={horizontalBarOptions}
+              height={220}
+              onElementClick={(label) => setFilter("status", label)}
+            />
+          </div>
+        )}
         {rollup.resourceHours.length > 0 && (
           <div className="chart-card">
             <h3>Resource Load Across Projects</h3>
@@ -500,10 +705,13 @@ function RollupView({
               data={buildResourceBar(rollup.resourceHours)}
               options={horizontalBarOptions}
               height={Math.max(180, Math.min(rollup.resourceHours.length, 10) * 28)}
+              onElementClick={(label) => setFilter("user", label)}
             />
           </div>
         )}
       </div>
+
+      <TaskFilterPanel projects={projects} filters={filters} onClear={clearFilter} showProject />
 
       <h2 style={{ marginTop: 32 }}>Projects</h2>
       <table className="data-table">
@@ -546,7 +754,7 @@ function RollupView({
           <h2 style={{ marginTop: 32 }}>Resource Load Across Projects</h2>
           <p className="hint" style={{ marginTop: -8, marginBottom: 16 }}>
             Total hours allocated to each person across every project on this dashboard — a quick way to
-            spot who's stretched thin.
+            spot who's stretched thin. Click a row to filter the task list above to just their tasks.
           </p>
           <table className="data-table">
             <thead>
@@ -558,7 +766,7 @@ function RollupView({
             </thead>
             <tbody>
               {rollup.resourceHours.map((r) => (
-                <tr key={r.name}>
+                <tr key={r.name} className="clickable-row" onClick={() => setFilter("user", r.name)}>
                   <td>{r.name}</td>
                   <td>{r.hours}</td>
                   <td>{r.projectCount}</td>
@@ -584,6 +792,14 @@ function ProjectView({
   onRemove: () => void;
 }) {
   const k = project.kpis;
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+
+  function setFilter(key: keyof TaskFilters, value: string) {
+    setFilters((f) => ({ ...f, [key]: f[key] === value ? null : value }));
+  }
+  function clearFilter(key: keyof TaskFilters) {
+    setFilters((f) => ({ ...f, [key]: null }));
+  }
 
   return (
     <div className="card">
@@ -637,14 +853,41 @@ function ProjectView({
             </div>
           </div>
 
+          <p className="hint">
+            Click a status bar, a RAG slice, or a name on the resource chart to filter the task list below
+            to just that.
+          </p>
+
           <div className="chart-grid">
             <div className="chart-card">
               <h3>Deliverable Health</h3>
-              <ChartCanvas type="doughnut" data={buildRagDonut(project.deliverables)} options={donutOptions} height={220} />
+              <ChartCanvas
+                type="doughnut"
+                data={buildRagDonut(project.deliverables)}
+                options={donutOptions}
+                height={220}
+                onElementClick={(label) => setFilter("rag", label)}
+              />
+            </div>
+            <div className="chart-card">
+              <h3>Tasks by Health (RAG)</h3>
+              <ChartCanvas
+                type="doughnut"
+                data={buildTaskRagDonut(project.deliverables)}
+                options={taskRagDonutOptions}
+                height={220}
+                onElementClick={(label) => setFilter("rag", label)}
+              />
             </div>
             <div className="chart-card">
               <h3>Task Status Breakdown</h3>
-              <ChartCanvas type="bar" data={buildStatusBar(k.statusBreakdown)} options={horizontalBarOptions} height={220} />
+              <ChartCanvas
+                type="bar"
+                data={buildStatusBar(k.statusBreakdown)}
+                options={horizontalBarOptions}
+                height={220}
+                onElementClick={(label) => setFilter("status", label)}
+              />
             </div>
             {k.burndown.length > 0 && (
               <div className="chart-card chart-card-wide">
@@ -660,10 +903,13 @@ function ProjectView({
                   data={buildResourceBar(k.resourceHours)}
                   options={horizontalBarOptions}
                   height={Math.max(180, k.resourceHours.length * 28)}
+                  onElementClick={(label) => setFilter("user", label)}
                 />
               </div>
             )}
           </div>
+
+          <TaskFilterPanel projects={[project]} filters={filters} onClear={clearFilter} showProject={false} />
 
           <h2 style={{ marginTop: 32 }}>Deliverables</h2>
           <table className="data-table">
@@ -696,6 +942,7 @@ function ProjectView({
           {k.resourceHours.length > 0 && (
             <>
               <h2 style={{ marginTop: 32 }}>Resource Allocation</h2>
+              <p className="hint" style={{ marginTop: -8 }}>Click a row to filter the task list above to just their tasks.</p>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -705,7 +952,7 @@ function ProjectView({
                 </thead>
                 <tbody>
                   {k.resourceHours.map((r) => (
-                    <tr key={r.name}>
+                    <tr key={r.name} className="clickable-row" onClick={() => setFilter("user", r.name)}>
                       <td>{r.name}</td>
                       <td>{r.hours}</td>
                     </tr>
