@@ -66,9 +66,10 @@ always consistent with what you see when the sheet is open.
 | Overall Health (RAG) | The worst RAG across all of a project's deliverables: any Red deliverable makes the whole project Red; else any Amber makes it Amber; else Gray if nothing's finished; Green only if every deliverable is Green. |
 | Task Completion % | Completed tasks ÷ total tasks, across every deliverable. |
 | On-Time Completion % | Of the tasks that are Completed, the % whose Actual Date was on or before their Baseline Date. Blank if nothing's completed yet. |
-| Overdue Tasks | Tasks not yet Completed whose Baseline Date has passed. |
-| Blocked Tasks | Tasks whose Status starts with "Blocked." |
-| Upcoming Milestones | Tasks not yet Completed with a Baseline Date in the next 7 days — a "what's due soon" list. |
+| Delay % | Overdue tasks ÷ total tasks, project-wide. *Clickable filters (below) and toggling Overdue Tasks recompute this from just the selected tasks.* |
+| Overdue Tasks | Tasks not yet Completed whose Baseline Date has passed. *Clickable — click the card to show only these tasks.* |
+| Blocked Tasks | Tasks whose Status starts with "Blocked." *Clickable.* |
+| Upcoming Milestones | Tasks not yet Completed with a Baseline Date in the next 7 days — a "what's due soon" list. *Clickable.* |
 | Days to Deadline | Project End Date minus today. |
 | Schedule Pace | Compares % of the project's calendar time elapsed against % of tasks completed. More than 15 points behind → **Behind**; more than 15 points ahead → **Ahead**; otherwise **On Pace**. This is a leading indicator — it can flag a problem before any single task is technically "overdue." |
 | Resource Allocation | Hours Allocated summed per person, from every task they're Assigned To on that project. |
@@ -79,8 +80,9 @@ always consistent with what you see when the sheet is open.
 |---|---|
 | Active Projects | Count of projects on your dashboard. |
 | Avg. Task Completion | Average of each project's Task Completion %. |
-| Overdue / Blocked Tasks | Summed across every project. |
-| Upcoming Milestones | Summed across every project, next 7 days. |
+| Delay % | Overdue tasks ÷ total tasks, across every project on your dashboard. *Clickable filters recompute this from just the selected tasks.* |
+| Overdue / Blocked Tasks | Summed across every project. *Clickable.* |
+| Upcoming Milestones | Summed across every project, next 7 days. *Clickable.* |
 | RAG Breakdown | How many projects are currently Red / Amber / Gray / Green. |
 | Resource Load Across Projects | The same per-person hour totals as above, but **added up across every project on the dashboard** — this is the one number a single-project view can't give you: who's carrying the most hours once you account for everything they're on. |
 
@@ -116,23 +118,45 @@ values (Chart.js's built-in tooltips):
 
 ## Click-to-filter
 
-Charts marked *Clickable* above, and the Resource Allocation / Resource
-Load table rows, aren't just for looking at — click a slice, bar, or row
-and the tab filters down to just the matching tasks:
+Every card marked *Clickable* above, the charts marked *Clickable*, and the
+Resource Allocation / Resource Load table rows all feed the same filter —
+click any of them and the whole tab reacts:
 
+- Click **Overdue Tasks**, **Blocked Tasks**, or **Upcoming Milestones** to
+  show only that set of tasks. Click again to turn it off — the card gets a
+  highlighted left edge while it's active.
 - Click a RAG segment (on either RAG donut) to see only tasks whose
   deliverable is that color.
 - Click a Status bar (e.g. **YTS**) to see only tasks with that status.
 - Click a person — on the Resource Allocation/Resource Load chart or table
   row — to see only tasks assigned to them.
 
-A **filter panel** appears below the charts listing every active filter as
-a removable chip, plus a table of the matching tasks (deliverable, task,
-assigned to, status, baseline date — and project, on the All Projects tab).
-Filters combine: clicking a status and then a person narrows to tasks that
-match both. Click a chip's **×**, or click the same chart segment again, to
-clear that filter. Switching project tabs always starts fresh — filters
-don't carry over from one project to another.
+Filters combine — clicking Overdue Tasks and then a person narrows to that
+person's overdue tasks. Two things update as soon as you click:
+
+1. **The KPI grid at the top** — Task Completion, Delay %, Overdue, Blocked,
+   and Upcoming Milestones all recompute from just the selected tasks (with
+   "X of Y filtered tasks" in the small print underneath so it's clear
+   they're no longer showing the whole project). Overall Health, Days to
+   Deadline, and Schedule Pace stay project-wide — filtering a task subset
+   doesn't change the project's deadline or health status.
+2. **A filter panel** appears below the charts with a one-line summary (%
+   overdue, blocked count, % complete, hours allocated for just the
+   filtered set), every active filter as a removable chip, and a table of
+   the matching tasks — deliverable, task, assigned to, status, hours,
+   baseline date, and plan date (plus project, on the All Projects tab).
+
+Click a chip's **×**, or click the same chart segment/card again, to clear
+that filter. Switching project tabs always starts fresh — filters don't
+carry over from one project to another.
+
+**Two Delay % widgets, on purpose.** The one in the main KPI grid is
+project-wide by default and reacts to the click-filters above. The one
+inside the Delivery Calendar section further down reacts to that section's
+own **From / To** date range and **Stage / Task Type** dropdown instead —
+a separate, calendar-scoped control. Because they can be filtered
+independently, it's normal for the two to show different percentages at
+the same time.
 
 ## Delivery Calendar
 

@@ -68,14 +68,40 @@ function RagBadge({ label }: { label: string }) {
   return <span className={`rag-badge ${ragClass(label)}`}>{label}</span>;
 }
 
-function KpiCard({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
-  return (
-    <div className="kpi-card">
+function KpiCard({
+  label,
+  value,
+  sub,
+  onClick,
+  active,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  /** Renders as a toggle button (e.g. Overdue Tasks) instead of a static card when set. */
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const inner = (
+    <>
       <div className="kpi-label">{label}</div>
       <div className="kpi-value">{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className={`kpi-card kpi-card-clickable${active ? " kpi-card-active" : ""}`}
+        onClick={onClick}
+        aria-pressed={active}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="kpi-card">{inner}</div>;
 }
 
 const RAG_ORDER: OverallRag[] = ["Red", "Amber", "Gray", "Green", "Not Started"];
@@ -247,11 +273,21 @@ interface FlatTask {
   assignedTo: string;
   status: string;
   baseline: string;
+  plan: string;
+  hours: number | null;
+  completed: boolean;
+  blocked: boolean;
+  overdue: boolean;
+  upcoming: boolean;
 }
 
 // Matches the exact grouping keys used elsewhere (computeKpis'
 // statusBreakdown, buildTaskRagDonut) so a click always lines up 1:1 with
-// what's shown in the chart that was clicked.
+// what's shown in the chart that was clicked. completed/blocked/overdue/
+// upcoming are carried straight from the already-computed TaskSnapshot
+// flags (lib/dashboardData.ts) rather than re-derived from raw dates here,
+// so the filtered/reactive KPIs below always agree with the project-level
+// KPI grid's own counts.
 function flattenTasks(projects: ProjectSnapshot[]): FlatTask[] {
   const out: FlatTask[] = [];
   projects.forEach((p) => {
@@ -265,6 +301,12 @@ function flattenTasks(projects: ProjectSnapshot[]): FlatTask[] {
           assignedTo: t.assignedTo,
           status: t.status || "Unknown",
           baseline: t.baseline,
+          plan: t.plan,
+          hours: t.hours,
+          completed: t.completed,
+          blocked: t.blocked,
+          overdue: t.overdue,
+          upcoming: t.upcoming,
         });
       });
     });
@@ -276,9 +318,58 @@ interface TaskFilters {
   status: string | null;
   user: string | null;
   rag: string | null;
+  overdue: boolean;
+  blocked: boolean;
+  upcoming: boolean;
 }
 
-const EMPTY_FILTERS: TaskFilters = { status: null, user: null, rag: null };
+type StringFilterKey = "status" | "user" | "rag";
+type FlagFilterKey = "overdue" | "blocked" | "upcoming";
+
+const EMPTY_FILTERS: TaskFilters = {
+  status: null,
+  user: null,
+  rag: null,
+  overdue: false,
+  blocked: false,
+  upcoming: false,
+};
+
+function hasActiveFilters(filters: TaskFilters): boolean {
+  return Boolean(filters.status || filters.user || filters.rag || filters.overdue || filters.blocked || filters.upcoming);
+}
+
+function matchesFilters(t: FlatTask, filters: TaskFilters): boolean {
+  if (filters.status && t.status !== filters.status) return false;
+  if (filters.user && t.assignedTo !== filters.user) return false;
+  if (filters.rag && t.deliverableRag !== filters.rag) return false;
+  if (filters.overdue && !t.overdue) return false;
+  if (filters.blocked && !t.blocked) return false;
+  if (filters.upcoming && !t.upcoming) return false;
+  return true;
+}
+
+// One source of truth for "what do the reactive KPI cards show" — used both
+// by the top KPI grid (ProjectView/RollupView) and by TaskFilterPanel's own
+// header stats, so they never drift apart.
+function summarizeTasks(tasks: FlatTask[]) {
+  const total = tasks.length;
+  const overdue = tasks.filter((t) => t.overdue).length;
+  const blocked = tasks.filter((t) => t.blocked).length;
+  const upcoming = tasks.filter((t) => t.upcoming).length;
+  const completed = tasks.filter((t) => t.completed).length;
+  const hours = Math.round(tasks.reduce((sum, t) => sum + (t.hours ?? 0), 0) * 10) / 10;
+  return {
+    total,
+    overdue,
+    blocked,
+    upcoming,
+    completed,
+    hours,
+    delayPct: total > 0 ? Math.round((overdue / total) * 100) : 0,
+    completionPct: total > 0 ? Math.round((completed / total) * 100) : 0,
+  };
+}
 
 function TaskFilterPanel({
   projects,
@@ -293,19 +384,21 @@ function TaskFilterPanel({
 }) {
   const allTasks = useMemo(() => flattenTasks(projects), [projects]);
 
-  if (!filters.status && !filters.user && !filters.rag) return null;
+  if (!hasActiveFilters(filters)) return null;
 
-  const filtered = allTasks.filter((t) => {
-    if (filters.status && t.status !== filters.status) return false;
-    if (filters.user && t.assignedTo !== filters.user) return false;
-    if (filters.rag && t.deliverableRag !== filters.rag) return false;
-    return true;
-  });
+  const filtered = allTasks.filter((t) => matchesFilters(t, filters));
+  const stats = summarizeTasks(filtered);
 
   return (
     <div className="filter-panel">
       <div className="filter-panel-header">
-        <h3 style={{ margin: 0 }}>Filtered Tasks ({filtered.length})</h3>
+        <div>
+          <h3 style={{ margin: 0 }}>Filtered Tasks ({filtered.length})</h3>
+          <p className="hint" style={{ margin: "4px 0 0" }}>
+            {stats.delayPct}% overdue ({stats.overdue} of {stats.total}) · {stats.blocked} blocked ·{" "}
+            {stats.completionPct}% complete · {stats.hours} hrs allocated
+          </p>
+        </div>
         <div className="filter-chips">
           {filters.status && (
             <span className="filter-chip">
@@ -331,6 +424,30 @@ function TaskFilterPanel({
               </button>
             </span>
           )}
+          {filters.overdue && (
+            <span className="filter-chip">
+              Overdue
+              <button type="button" onClick={() => onClear("overdue")} aria-label="Clear overdue filter">
+                ×
+              </button>
+            </span>
+          )}
+          {filters.blocked && (
+            <span className="filter-chip">
+              Blocked
+              <button type="button" onClick={() => onClear("blocked")} aria-label="Clear blocked filter">
+                ×
+              </button>
+            </span>
+          )}
+          {filters.upcoming && (
+            <span className="filter-chip">
+              Upcoming (7 days)
+              <button type="button" onClick={() => onClear("upcoming")} aria-label="Clear upcoming filter">
+                ×
+              </button>
+            </span>
+          )}
         </div>
       </div>
       {filtered.length === 0 ? (
@@ -344,7 +461,9 @@ function TaskFilterPanel({
               <th>Task</th>
               <th>Assigned To</th>
               <th>Status</th>
+              <th>Hours</th>
               <th>Baseline Date</th>
+              <th>Plan Date</th>
             </tr>
           </thead>
           <tbody>
@@ -355,7 +474,9 @@ function TaskFilterPanel({
                 <td>{t.taskLabel}</td>
                 <td>{t.assignedTo || "—"}</td>
                 <td>{t.status || "—"}</td>
+                <td>{t.hours ?? "—"}</td>
                 <td>{t.baseline || "—"}</td>
+                <td>{t.plan || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -652,29 +773,77 @@ function RollupView({
 }) {
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 
-  function setFilter(key: keyof TaskFilters, value: string) {
+  function setFilter(key: StringFilterKey, value: string) {
     setFilters((f) => ({ ...f, [key]: f[key] === value ? null : value }));
   }
+  function toggleFlag(key: FlagFilterKey) {
+    setFilters((f) => ({ ...f, [key]: !f[key] }));
+  }
   function clearFilter(key: keyof TaskFilters) {
-    setFilters((f) => ({ ...f, [key]: null }));
+    setFilters((f) => {
+      if (key === "overdue") return { ...f, overdue: false };
+      if (key === "blocked") return { ...f, blocked: false };
+      if (key === "upcoming") return { ...f, upcoming: false };
+      if (key === "status") return { ...f, status: null };
+      if (key === "user") return { ...f, user: null };
+      if (key === "rag") return { ...f, rag: null };
+      return f;
+    });
   }
 
   const allDeliverables = useMemo(() => projects.flatMap((p) => p.deliverables), [projects]);
+  const allFlatTasks = useMemo(() => flattenTasks(projects), [projects]);
+  const filterActive = hasActiveFilters(filters);
+  const visibleStats = useMemo(
+    () => (filterActive ? summarizeTasks(allFlatTasks.filter((t) => matchesFilters(t, filters))) : null),
+    [filterActive, allFlatTasks, filters]
+  );
+  const rollupDelayPct = rollup.totalTasks > 0 ? Math.round((rollup.totalOverdueTasks / rollup.totalTasks) * 100) : 0;
 
   return (
     <div className="card">
       <h2>Portfolio Health</h2>
       <div className="kpi-grid">
         <KpiCard label="Active Projects" value={rollup.projectCount} />
-        <KpiCard label="Avg. Task Completion" value={`${rollup.avgTaskCompletionPct}%`} />
-        <KpiCard label="Overdue Tasks" value={rollup.totalOverdueTasks} />
-        <KpiCard label="Blocked Tasks" value={rollup.totalBlockedTasks} />
-        <KpiCard label="Upcoming Milestones" value={rollup.totalUpcomingMilestones} sub="Next 7 days" />
+        <KpiCard
+          label="Avg. Task Completion"
+          value={`${visibleStats ? visibleStats.completionPct : rollup.avgTaskCompletionPct}%`}
+          sub={visibleStats ? `${visibleStats.completed} of ${visibleStats.total} filtered tasks` : "Average across projects"}
+        />
+        <KpiCard
+          label="Delay %"
+          value={`${visibleStats ? visibleStats.delayPct : rollupDelayPct}%`}
+          sub={
+            visibleStats
+              ? `${visibleStats.overdue} of ${visibleStats.total} filtered tasks`
+              : `${rollup.totalOverdueTasks} of ${rollup.totalTasks} tasks`
+          }
+        />
+        <KpiCard
+          label="Overdue Tasks"
+          value={visibleStats ? visibleStats.overdue : rollup.totalOverdueTasks}
+          onClick={() => toggleFlag("overdue")}
+          active={filters.overdue}
+        />
+        <KpiCard
+          label="Blocked Tasks"
+          value={visibleStats ? visibleStats.blocked : rollup.totalBlockedTasks}
+          onClick={() => toggleFlag("blocked")}
+          active={filters.blocked}
+        />
+        <KpiCard
+          label="Upcoming Milestones"
+          value={visibleStats ? visibleStats.upcoming : rollup.totalUpcomingMilestones}
+          sub="Next 7 days"
+          onClick={() => toggleFlag("upcoming")}
+          active={filters.upcoming}
+        />
       </div>
 
       <p className="hint" style={{ marginTop: 4 }}>
-        Click a status bar, a name on the resource chart, or a slice of "Tasks by Health" below to filter
-        the task list further down the page to just that.
+        Click Overdue Tasks, Blocked Tasks, Upcoming Milestones, a status bar, a name on the resource chart,
+        or a slice of "Tasks by Health" below — the KPIs above and the task list further down update to
+        match your selection.
       </p>
 
       <div className="chart-grid">
@@ -801,12 +970,31 @@ function ProjectView({
   const k = project.kpis;
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 
-  function setFilter(key: keyof TaskFilters, value: string) {
+  function setFilter(key: StringFilterKey, value: string) {
     setFilters((f) => ({ ...f, [key]: f[key] === value ? null : value }));
   }
-  function clearFilter(key: keyof TaskFilters) {
-    setFilters((f) => ({ ...f, [key]: null }));
+  function toggleFlag(key: FlagFilterKey) {
+    setFilters((f) => ({ ...f, [key]: !f[key] }));
   }
+  function clearFilter(key: keyof TaskFilters) {
+    setFilters((f) => {
+      if (key === "overdue") return { ...f, overdue: false };
+      if (key === "blocked") return { ...f, blocked: false };
+      if (key === "upcoming") return { ...f, upcoming: false };
+      if (key === "status") return { ...f, status: null };
+      if (key === "user") return { ...f, user: null };
+      if (key === "rag") return { ...f, rag: null };
+      return f;
+    });
+  }
+
+  const allFlatTasks = useMemo(() => flattenTasks([project]), [project]);
+  const filterActive = hasActiveFilters(filters);
+  const visibleStats = useMemo(
+    () => (filterActive ? summarizeTasks(allFlatTasks.filter((t) => matchesFilters(t, filters))) : null),
+    [filterActive, allFlatTasks, filters]
+  );
+  const projectDelayPct = k.totalTasks > 0 ? Math.round((k.overdueTaskCount / k.totalTasks) * 100) : 0;
 
   return (
     <div className="card">
@@ -841,11 +1029,44 @@ function ProjectView({
                 <RagBadge label={k.overallRag} />
               </div>
             </div>
-            <KpiCard label="Task Completion" value={`${k.taskCompletionPct}%`} sub={`${k.completedTasks} of ${k.totalTasks} tasks`} />
+            <KpiCard
+              label="Task Completion"
+              value={`${visibleStats ? visibleStats.completionPct : k.taskCompletionPct}%`}
+              sub={
+                visibleStats
+                  ? `${visibleStats.completed} of ${visibleStats.total} filtered tasks`
+                  : `${k.completedTasks} of ${k.totalTasks} tasks`
+              }
+            />
             <KpiCard label="On-Time Completion" value={k.onTimeCompletionPct !== null ? `${k.onTimeCompletionPct}%` : "—"} />
-            <KpiCard label="Overdue Tasks" value={k.overdueTaskCount} />
-            <KpiCard label="Blocked Tasks" value={k.blockedTaskCount} />
-            <KpiCard label="Upcoming Milestones" value={k.upcomingMilestoneCount} sub="Next 7 days" />
+            <KpiCard
+              label="Delay %"
+              value={`${visibleStats ? visibleStats.delayPct : projectDelayPct}%`}
+              sub={
+                visibleStats
+                  ? `${visibleStats.overdue} of ${visibleStats.total} filtered tasks`
+                  : `${k.overdueTaskCount} of ${k.totalTasks} tasks`
+              }
+            />
+            <KpiCard
+              label="Overdue Tasks"
+              value={visibleStats ? visibleStats.overdue : k.overdueTaskCount}
+              onClick={() => toggleFlag("overdue")}
+              active={filters.overdue}
+            />
+            <KpiCard
+              label="Blocked Tasks"
+              value={visibleStats ? visibleStats.blocked : k.blockedTaskCount}
+              onClick={() => toggleFlag("blocked")}
+              active={filters.blocked}
+            />
+            <KpiCard
+              label="Upcoming Milestones"
+              value={visibleStats ? visibleStats.upcoming : k.upcomingMilestoneCount}
+              sub="Next 7 days"
+              onClick={() => toggleFlag("upcoming")}
+              active={filters.upcoming}
+            />
             <KpiCard label="Days to Deadline" value={k.daysToDeadline ?? "—"} />
             <div className="kpi-card">
               <div className="kpi-label">Schedule Pace</div>
@@ -861,8 +1082,8 @@ function ProjectView({
           </div>
 
           <p className="hint">
-            Click a status bar, a RAG slice, or a name on the resource chart to filter the task list below
-            to just that.
+            Click Overdue Tasks, Blocked Tasks, Upcoming Milestones, a status bar, a RAG slice, or a name on
+            the resource chart — the KPIs above and the task list below update to match your selection.
           </p>
 
           <div className="chart-grid">

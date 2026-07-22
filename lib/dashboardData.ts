@@ -97,6 +97,7 @@ export interface RollupKpis {
   projectCount: number;
   ragCounts: Record<OverallRag, number>;
   avgTaskCompletionPct: number;
+  totalTasks: number;
   totalOverdueTasks: number;
   totalBlockedTasks: number;
   totalUpcomingMilestones: number;
@@ -391,6 +392,7 @@ function computeBurndown(allTasks: TaskSnapshot[], start: Date | null, end: Date
 export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
   const ragCounts: Record<OverallRag, number> = { Red: 0, Amber: 0, Gray: 0, Green: 0, "Not Started": 0 };
   let completionSum = 0;
+  let totalTasks = 0;
   let overdue = 0;
   let blocked = 0;
   let upcoming = 0;
@@ -400,6 +402,7 @@ export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
   projects.forEach((p) => {
     ragCounts[p.kpis.overallRag] += 1;
     completionSum += p.kpis.taskCompletionPct;
+    totalTasks += p.kpis.totalTasks;
     overdue += p.kpis.overdueTaskCount;
     blocked += p.kpis.blockedTaskCount;
     upcoming += p.kpis.upcomingMilestoneCount;
@@ -426,6 +429,7 @@ export function computeRollup(projects: ProjectSnapshot[]): RollupKpis {
     projectCount: projects.length,
     ragCounts,
     avgTaskCompletionPct: projects.length > 0 ? Math.round(completionSum / projects.length) : 0,
+    totalTasks,
     totalOverdueTasks: overdue,
     totalBlockedTasks: blocked,
     totalUpcomingMilestones: upcoming,

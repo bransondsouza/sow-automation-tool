@@ -48,6 +48,19 @@ function toKey(y: number, m: number, d: number): string {
   return `${y}-${pad(m + 1)}-${pad(d)}`;
 }
 
+// yyyy-mm-dd -> a local-time Date. `new Date("yyyy-mm-dd")` parses as UTC
+// midnight per the ECMA-262 spec, which shifts a day when later read back
+// with local getters (getFullYear/getMonth) in timezones behind UTC —
+// exactly the kind of off-by-one that would page the calendar to the wrong
+// month. Parsing the parts by hand keeps everything in local time.
+function parseLocalDateKey(key: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return isNaN(date.getTime()) ? null : date;
+}
+
 function monthLabel(y: number, m: number): string {
   return new Date(y, m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
@@ -147,15 +160,10 @@ export default function DeliveryCalendar({
       : 0;
 
   const busiest = useMemo<{ date: string; count: number } | null>(() => {
-    let bestDate: string | null = null;
-    let bestCount = 0;
-    eventsByDate.forEach((list, date) => {
-      if (list.length > bestCount) {
-        bestCount = list.length;
-        bestDate = date;
-      }
-    });
-    return bestDate ? { date: bestDate, count: bestCount } : null;
+    return Array.from(eventsByDate.entries()).reduce<{ date: string; count: number } | null>(
+      (best, [date, list]) => (list.length > (best?.count ?? 0) ? { date, count: list.length } : best),
+      null
+    );
   }, [eventsByDate]);
 
   function shiftPage(delta: number) {
@@ -172,8 +180,8 @@ export default function DeliveryCalendar({
   // the calendar over to its month first if it isn't currently in view.
   function jumpToBusiest() {
     if (!busiest) return;
-    const d = new Date(busiest.date);
-    if (isNaN(d.getTime())) return;
+    const d = parseLocalDateKey(busiest.date);
+    if (!d) return;
     const monthsFromPageStart = (d.getFullYear() - pageStart.getFullYear()) * 12 + (d.getMonth() - pageStart.getMonth());
     if (monthsFromPageStart < 0 || monthsFromPageStart >= MONTHS_PER_PAGE) {
       setPageStart(new Date(d.getFullYear(), d.getMonth(), 1));

@@ -854,11 +854,20 @@ button:disabled {
 }
 
 /* ── Click-to-filter dashboard interactivity ── */
+/* The global `button, .btn` rule (near the top of this file) sets
+   display:inline-flex, color:#fff and margin-top:24px — none of which
+   .kpi-card overrides, since .kpi-card was written for a <div>. Left
+   unset here, those bleed through and produce invisible white text in a
+   squished horizontal row instead of the normal stacked card. Reset all
+   three explicitly. */
 .kpi-card-clickable {
+  display: block;
+  color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
   width: 100%;
+  margin-top: 0;
   transition: box-shadow 0.12s ease, transform 0.12s ease;
 }
 
@@ -870,6 +879,14 @@ button:disabled {
 .kpi-card-clickable:disabled {
   cursor: default;
   opacity: 0.7;
+}
+
+/* Highlights a clickable KPI card whose filter is currently toggled on
+   (Overdue Tasks / Blocked Tasks / Upcoming Milestones). Must come after
+   .kpi-card in source order to win the border-left-color tie. */
+.kpi-card-active {
+  border-left-color: var(--primary);
+  background: rgba(242, 107, 34, 0.06);
 }
 
 .clickable-row {
