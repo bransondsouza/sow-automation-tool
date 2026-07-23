@@ -266,6 +266,35 @@ Example: to see how loaded up August is, set From = Aug 1, To = Aug 31 and
 leave Stage on "All stages" — the calendar, By Month cards, Delay %, and
 Busiest Day all narrow to just that window.
 
+## Risk Assistant
+
+A **🤖 Risk Assistant** button sits in the header of every project tab (not
+the All Projects rollup — like Financials, this is inherently per-project).
+It shows a small red badge with the current overdue-task count when there
+is one, so it's visible at a glance that something needs attention.
+
+Click it and a chat panel opens in the corner of the screen. The first
+thing it does, automatically, is analyze the project's *current* live
+status — overdue and blocked tasks, schedule pace, cost/schedule variance,
+critical path, Quality % — and come back with a plain-language list of the
+risks it sees, each classified (Schedule Risk, Resource Risk, Cost Risk,
+etc.) with a specific mitigation, not generic advice. If nothing stands
+out, it says so rather than inventing a risk to report.
+
+From there it's a normal chat — ask a follow-up about a specific task or
+deliverable, or ask something general like "what's a good way to run a
+steering committee for a project this size?" It's grounded in this
+project's live data on every message (each turn re-reads the tracker sheet
+fresh, the same way the rest of the dashboard does), so if something
+changes on the sheet mid-conversation, the next answer reflects that.
+
+**Powered by Google Gemini**, not Claude — a deliberate choice, since this
+piece is expected to move onto the company's own Gemini/internal-LLM stack
+later, so it made sense to build it there from the start rather than
+migrate it afterward. It needs its own `GEMINI_API_KEY` (see
+`.env.example`); if that's not set, the button still shows, but clicking it
+returns a clear "not configured yet" message instead of failing silently.
+
 ## Generate Client Status Report
 
 At the bottom of every project tab (not the All Projects rollup — this is

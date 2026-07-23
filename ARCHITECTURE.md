@@ -29,6 +29,7 @@ is added. This document describes the target end state; the current build covers
 | Slides/Sheets generation | **Google Slides API** + **Google Sheets API** + **Google Drive API** | Programmatically duplicates your template and fills in the placeholders, or builds the tracker sheet with formulas and dropdowns already in place. |
 | Business-day scheduling | **date-holidays** (npm) | Computes each selected country's public holidays server-side (Apps Script's sandbox has no npm access) and bakes the result into the tracker's in-sheet script at generation time — see the Phase 2 write-up below. |
 | Notifications | **Google Chat** (incoming webhook) + **Gmail API** | Phase 4: posts to a space and/or emails a client-ready summary (with the deck attached as PDF) when a status report is generated. |
+| Risk Assistant chat bot | **Google Gemini API** (`@google/genai`) | A separate AI provider from the SOW extraction step above, used deliberately — this piece is expected to move onto the company's Gemini/internal-LLM stack, so it's built on Gemini from the start. Grounded on every message by a fresh live read of the project's tracker sheet (`lib/gemini.ts`, `/api/dashboard/risk-bot`); no data is persisted for this feature. |
 
 Nothing here needs you to run a server, manage Docker, or touch a terminal after
 the one-time setup. Day to day, employees only ever see the web page.

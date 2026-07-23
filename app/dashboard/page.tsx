@@ -18,6 +18,7 @@ import type { DashboardLink } from "@/lib/types";
 import ChartCanvas from "./ChartCanvas";
 import DeliverableTimeline from "./DeliverableTimeline";
 import DeliveryCalendar from "./DeliveryCalendar";
+import RiskBotPanel from "./RiskBotPanel";
 
 const RAG_COLORS: Record<string, string> = {
   Red: "#ef4444",
@@ -1196,9 +1197,12 @@ function ProjectView({
             {project.buHead ? ` · BU Head: ${project.buHead}` : ""}
           </p>
         </div>
-        <button type="button" className="remove-link" onClick={onRemove}>
-          Remove from dashboard
-        </button>
+        <div className="project-header-actions">
+          <RiskBotPanel project={project} />
+          <button type="button" className="remove-link" onClick={onRemove}>
+            Remove from dashboard
+          </button>
+        </div>
       </div>
 
       {!project.trackerGenerated ? (

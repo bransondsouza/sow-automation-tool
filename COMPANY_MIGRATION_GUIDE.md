@@ -198,6 +198,8 @@ Either way, that file ID is your new `DEFAULT_TEMPLATE_ID`.
    | `GOOGLE_CLIENT_SECRET` | From Step 2 |
    | `ANTHROPIC_API_KEY` | From Step 3 |
    | `ANTHROPIC_MODEL` | `claude-sonnet-4-5-20250929` (or leave blank) |
+   | `GEMINI_API_KEY` | A company-billed key from aistudio.google.com/apikey — powers the dashboard's Risk Assistant only; leave blank and the rest of the app still works, that one button just won't respond |
+   | `GEMINI_MODEL` | `gemini-flash-latest` (or leave blank) |
    | `SUPABASE_URL` | From Step 4 |
    | `SUPABASE_SERVICE_ROLE_KEY` | From Step 4 |
    | `SUPABASE_STORAGE_BUCKET` | `sow-uploads` |
@@ -262,10 +264,19 @@ it and they can sign in immediately. A short message to PMs should cover:
 
 ## About the AI provider — Claude, your internal LLM, and Gemini
 
-The extraction step (turning raw SOW text into structured project data) is
-isolated in one file, `lib/claude.ts`, and currently calls the Anthropic
-Claude API. A few things worth knowing as you weigh this against your
-internal LLM or Gemini:
+**Update: the app now genuinely uses both providers, on purpose, for two
+different jobs** — this isn't purely hypothetical anymore. The SOW
+extraction step (`lib/claude.ts`) still calls Anthropic Claude. The
+dashboard's Risk Assistant chat bot (`lib/gemini.ts`, `/api/dashboard/risk-bot`)
+calls Google Gemini instead — that one was built on Gemini specifically
+because it's expected to move onto the company's Gemini/internal-LLM stack
+once this migrates, so it made sense to start there rather than migrate it
+later. It needs its own key, `GEMINI_API_KEY` (see the env var table below)
+— from https://aistudio.google.com/apikey, a company-billed one for the
+migrated environment, same pattern as the Anthropic key.
+
+A few things worth knowing as you weigh the extraction step's provider
+against your internal LLM or Gemini:
 
 - **You don't need to change this to move to company setup.** A
   company-billed Anthropic key (Step 3) is all that's needed — the rest of
