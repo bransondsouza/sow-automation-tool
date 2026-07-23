@@ -461,7 +461,7 @@ function dependencyValidationRequests(): sheets_v4.Schema$Request[] {
 function financialFormattingRequests(): sheets_v4.Schema$Request[] {
   const currencyFormat = { numberFormat: { type: "NUMBER", pattern: '#,##0.00" "' } };
   const wholeNumberFormat = { numberFormat: { type: "NUMBER", pattern: "#,##0" } };
-  const nonNegativeValidation = { condition: { type: "NUMBER_GREATER_THAN_OR_EQUAL", values: [{ userEnteredValue: "0" }] }, strict: false, showCustomUi: true };
+  const nonNegativeValidation = { condition: { type: "NUMBER_GREATER_THAN_EQ", values: [{ userEnteredValue: "0" }] }, strict: false, showCustomUi: true };
 
   // Value cells: H1/J1/L1 (Projected Revenue/Subcon Cost/Resources),
   // H2/J2/L2 (Actual Revenue/Subcon Cost/Resources). Revenue and Subcon Cost
