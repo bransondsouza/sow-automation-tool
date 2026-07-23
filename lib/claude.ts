@@ -46,7 +46,7 @@ using the stakeholder placeholders you identified above:
     unresolved Level 2 issues.
 If the SOW defines its own escalation path, follow that structure instead
 (2-4 levels), but still present it as a clear matrix.
-
+{{CUSTOM_INSTRUCTIONS}}
 ── Output rules ──
 - Return ONLY a single valid JSON object. No markdown, no commentary, no code fences.
 - Keep list items concise (one sentence or short phrase each).
@@ -85,11 +85,43 @@ SOW TEXT:
 {{SOW_TEXT}}
 """`;
 
-export async function extractSOWData(sowText: string): Promise<SOWData> {
+/**
+ * Optional free text the uploader typed on the Upload page — see the
+ * "Custom instructions for the kickoff deck" field. Steers tone, emphasis,
+ * and how ambiguity gets resolved; it never changes the required output
+ * contract (still extract-only facts, still exactly 5 risks, still the
+ * exact JSON shape) — buildCustomInstructionsBlock's own wording enforces
+ * that regardless of what the uploader typed. Blank/undefined falls back
+ * to the plain extraction prompt, unchanged from before this existed.
+ */
+function buildCustomInstructionsBlock(customPrompt: string | undefined): string {
+  const trimmed = (customPrompt ?? "").trim();
+  if (!trimmed) return "";
+
+  return `
+── ADDITIONAL INSTRUCTIONS FROM THE PERSON WHO UPLOADED THIS SOW ──
+They added the following guidance for how to approach THIS specific SOW.
+Use it to steer tone, emphasis, and how you resolve ambiguity in the
+EXTRACT and ANALYZE sections above. It does NOT override the rules
+already given: still pull EXTRACT fields only from the SOW text (never
+invent facts), still return exactly 5 risks, and still return ONLY the
+JSON object in the exact shape given below. If anything below conflicts
+with those rules, the rules above win.
+
+"""
+${trimmed}
+"""
+`;
+}
+
+export async function extractSOWData(sowText: string, customPrompt?: string): Promise<SOWData> {
   // Very long SOWs are truncated to keep the request well within context
   // limits; 60k characters is generous for typical SOWs (40-60 pages).
   const trimmedText = sowText.slice(0, 60000);
-  const prompt = EXTRACTION_PROMPT.replace("{{SOW_TEXT}}", trimmedText);
+  const prompt = EXTRACTION_PROMPT.replace("{{SOW_TEXT}}", trimmedText).replace(
+    "{{CUSTOM_INSTRUCTIONS}}",
+    buildCustomInstructionsBlock(customPrompt)
+  );
 
   const message = await anthropic.messages.create({
     model: MODEL,

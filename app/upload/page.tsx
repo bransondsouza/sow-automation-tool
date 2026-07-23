@@ -10,6 +10,7 @@ export default function UploadPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [customPrompt, setCustomPrompt] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [teamRoster, setTeamRoster] = useState("");
   const [buHeadName, setBuHeadName] = useState("");
@@ -33,6 +34,7 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append("file", file);
+    if (customPrompt.trim()) formData.append("customPrompt", customPrompt.trim());
     if (templateId.trim()) formData.append("templateId", templateId.trim());
     if (teamRoster.trim()) formData.append("teamRoster", teamRoster.trim());
     if (buHeadName.trim()) formData.append("buHeadName", buHeadName.trim());
@@ -79,6 +81,30 @@ export default function UploadPage() {
             accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
+
+          <label htmlFor="customPrompt">
+            Custom instructions for the kickoff deck (optional)
+          </label>
+          <textarea
+            id="customPrompt"
+            rows={3}
+            placeholder={
+              'e.g. "Keep the tone formal — this is a public-sector client" or ' +
+              '"Emphasize the integration risks over budget risk" — leave blank ' +
+              "to use our standard approach"
+            }
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 14, fontFamily: "inherit" }}
+          />
+          <p className="hint">
+            Tell us how to read this particular SOW — tone, what to emphasize,
+            how to interpret something ambiguous, and so on. We'll still pull
+            every fact straight from the document; this just steers judgment
+            calls (which risks matter most, how formal the language should be,
+            what to lead with). Leave it blank and we'll use our standard,
+            proven approach — the one we've always used.
+          </p>
 
           <label htmlFor="templateId">
             Google Slides template link (optional)

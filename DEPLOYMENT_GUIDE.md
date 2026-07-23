@@ -77,6 +77,14 @@ things:
 > set both env vars above (the endpoint returns Unauthorized without
 > `CRON_SECRET`). Preview deployments never trigger it.
 
+**Already deployed and just pulled the custom kickoff-deck prompt update?**
+Just two things: (1) run `alter table jobs add column if not exists
+custom_prompt text;` in Supabase → SQL Editor (or just re-run the whole
+`supabase/schema.sql` file — everything in it is idempotent), (2) `git push`
+and redeploy. No new env var, no new Google Cloud setup, no re-consent
+needed — this only adds an optional textarea to the Upload page and a
+column to store what someone typed in it.
+
 ---
 
 ## What you'll create, in order

@@ -70,6 +70,7 @@ export interface Job {
   bu_head_name: string | null;
   bu_head_email: string | null;
   business_countries: string | null;
+  custom_prompt: string | null;
   script_error: string | null;
   error_message: string | null;
   created_at: string;

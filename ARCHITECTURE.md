@@ -42,15 +42,23 @@ the one-time setup. Day to day, employees only ever see the web page.
 1. Employee signs in with Google (OAuth) → grants the app permission to create
    files in their own Drive (Slides/Sheets/Drive scopes only — never full account
    access).
-2. Employee goes to **Upload**, picks a SOW (PDF or .docx), optionally pastes a
-   link to a custom Slides template, and clicks **Generate**.
+2. Employee goes to **Upload**, picks a SOW (PDF or .docx), optionally types
+   custom instructions for how the kickoff deck should be generated
+   (tone, what to emphasize, how to read something ambiguous), optionally
+   pastes a link to a custom Slides template, and clicks **Generate**.
 3. The server extracts text and sends it to Claude, which does two different
    jobs in one pass: it **extracts** project name, client, overview, inputs
    needed, deliverables, milestones, and stakeholder names directly from the
    SOW; and it **analyzes** the project to generate the top 5 risks (ranked
    by likelihood × impact, with specific mitigations), a governance cadence,
    and an escalation matrix — using standard PM best practice, not just
-   whatever text happens to appear in the SOW.
+   whatever text happens to appear in the SOW. If the employee typed custom
+   instructions, they're appended to the same prompt as extra guidance
+   ("steer emphasis and tone, resolve ambiguity this way") — they can't
+   change what gets extracted-vs-invented or the required output shape,
+   only influence judgment calls within it. No instructions typed → the
+   original, unmodified default prompt runs, exactly as before this
+   existed.
 4. The server copies the chosen Slides template (or the org default) into the
    employee's Drive, then uses `replaceAllText` to swap every `{{TOKEN}}`
    placeholder in the template for the real content — this is what keeps the
@@ -232,7 +240,8 @@ project's dashboard link, so the panel comes back pre-filled next time. See
 `DASHBOARD.md` for the full explanation.
 
 **Daily Task Alerts ✅ built**
-A Vercel Cron job (`GET /api/cron/daily-alerts`, once a day) checks every
+A Vercel Cron job (`GET /api/cron/daily-alerts`, once a day at 10:00 AM
+IST / 4:30 AM UTC) checks every
 project on anyone's dashboard for three conditions: tasks past their
 Baseline Date, tasks still `YTS` past their own Plan Date, and tasks due
 today (Plan Date if set, else Baseline Date) — see `lib/alerts.ts`. Each

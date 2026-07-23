@@ -384,7 +384,10 @@ token their sign-in issues (see `lib/tokenStore.ts` and the
 `user_google_tokens` table in `supabase/schema.sql`) — this is the **only**
 Google credential this app stores server-side; every other feature reads
 live using whoever's browser session is open. A scheduled job (Vercel Cron,
-`GET /api/cron/daily-alerts`, see `vercel.json`) runs once a day, finds a
+`GET /api/cron/daily-alerts`, see `vercel.json`) runs once a day at **10:00
+AM IST** (stored as `30 4 * * *` — Vercel Cron only runs on UTC, so this is
+that fixed offset, not an IST-aware schedule; it'll drift by an hour if
+India ever changes its UTC offset, which is not expected), finds a
 stored token for someone who linked each project, exchanges it for a fresh
 access token, and reads/sends exactly as that feature already does when a
 person is signed in — same Gmail scope, same Sheets read. If nobody who

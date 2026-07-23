@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  const customPrompt = ((formData.get("customPrompt") as string | null) || "").trim();
   const templateInput = (formData.get("templateId") as string | null) || "";
   const rosterInput = (formData.get("teamRoster") as string | null) || "";
   const teamRoster = rosterInput
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
       bu_head_name: buHead?.name ?? null,
       bu_head_email: buHead?.email ?? null,
       business_countries: businessCountries.length > 0 ? businessCountries.join(",") : null,
+      custom_prompt: customPrompt || null,
     })
     .select()
     .single();
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
     const sowText = await extractTextFromFile(buffer, file.type, file.name);
 
     await supabaseAdmin.from("jobs").update({ status: "parsing" }).eq("id", jobId);
-    const sowData = await extractSOWData(sowText);
+    const sowData = await extractSOWData(sowText, customPrompt || undefined);
 
     await supabaseAdmin
       .from("jobs")

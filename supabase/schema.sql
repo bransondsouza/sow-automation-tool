@@ -24,6 +24,12 @@ create table if not exists jobs (
   -- Date schedule (and Plan Date validation) skips. Null/empty = weekends
   -- only, no country holidays excluded.
   business_countries text,
+  -- Optional free text the uploader typed on the Upload page to steer how
+  -- the kickoff deck gets generated (tone, emphasis, how to read something
+  -- ambiguous) — passed alongside the SOW text to the extraction prompt in
+  -- lib/claude.ts. Null/empty means "use the standard approach." Kept on
+  -- the job row purely for audit/debugging — nothing reads it back out.
+  custom_prompt text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -167,3 +173,9 @@ create policy "Users can manage their own dashboard links"
 -- more than once), or just re-run this whole file:
 --
 --   alter table jobs add column if not exists business_countries text;
+
+-- ── Adding the custom kickoff-deck prompt field to an existing database ──
+-- Already have the jobs table? Run this block (safe to run more than once),
+-- or just re-run this whole file:
+--
+--   alter table jobs add column if not exists custom_prompt text;
