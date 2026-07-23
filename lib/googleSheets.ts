@@ -181,6 +181,7 @@ export async function generateProjectSheet(
         ...dependencyValidationRequests(),
         ...financialFormattingRequests(),
         ...columnWidthRequests(),
+        ...borderAndBandingRequests(totalTaskRows),
       ],
     },
   });
@@ -544,6 +545,66 @@ function columnWidthRequests(): sheets_v4.Schema$Request[] {
         range: { sheetId: FINANCIAL_HISTORY_SHEET_ID, dimension: "COLUMNS", startIndex: 0, endIndex: 4 },
         properties: { pixelSize: 170 },
         fields: "pixelSize",
+      },
+    },
+  ];
+}
+
+// A navy-ish tone reused for every "heavier" border below, so the sheet
+// reads as one deliberately designed table rather than a bare grid — the
+// same family of colors as the app's own brand navy.
+const BORDER_ACCENT = { red: 0.11, green: 0.31, blue: 0.43 };
+const BORDER_LIGHT = { red: 0.82, green: 0.82, blue: 0.82 };
+
+// Thin grid lines across the whole task table, a heavier outline around it,
+// a heavier line separating the header from the data, and light alternating
+// row banding down the task rows — so it's easy to track one row across
+// many columns at a glance. The Tracking tab gets its own, more involved
+// version of this (task-block separators + tint) from the Apps Script side,
+// since that table's shape — a repeating column-block per task — is quite
+// different from this one's flat task list.
+function borderAndBandingRequests(totalTaskRows: number): sheets_v4.Schema$Request[] {
+  const headerRow = ESTIMATION_HEADER_ROW - 1; // 0-indexed
+  const lastRow = ESTIMATION_HEADER_ROW - 1 + totalTaskRows; // exclusive end
+  const fullRange = { sheetId: ESTIMATION_SHEET_ID, startRowIndex: headerRow, endRowIndex: lastRow, startColumnIndex: 0, endColumnIndex: 9 };
+  const headerRange = { sheetId: ESTIMATION_SHEET_ID, startRowIndex: headerRow, endRowIndex: headerRow + 1, startColumnIndex: 0, endColumnIndex: 9 };
+
+  return [
+    {
+      updateBorders: {
+        range: fullRange,
+        top: { style: "SOLID", color: BORDER_LIGHT },
+        bottom: { style: "SOLID", color: BORDER_LIGHT },
+        left: { style: "SOLID", color: BORDER_LIGHT },
+        right: { style: "SOLID", color: BORDER_LIGHT },
+        innerHorizontal: { style: "SOLID", color: BORDER_LIGHT },
+        innerVertical: { style: "SOLID", color: BORDER_LIGHT },
+      },
+    },
+    {
+      updateBorders: {
+        range: fullRange,
+        top: { style: "SOLID_MEDIUM", color: BORDER_ACCENT },
+        bottom: { style: "SOLID_MEDIUM", color: BORDER_ACCENT },
+        left: { style: "SOLID_MEDIUM", color: BORDER_ACCENT },
+        right: { style: "SOLID_MEDIUM", color: BORDER_ACCENT },
+      },
+    },
+    {
+      updateBorders: {
+        range: headerRange,
+        bottom: { style: "SOLID_MEDIUM", color: BORDER_ACCENT },
+      },
+    },
+    {
+      addBanding: {
+        bandedRange: {
+          range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: headerRow + 1, endRowIndex: lastRow, startColumnIndex: 0, endColumnIndex: 9 },
+          rowProperties: {
+            firstBandColor: { red: 1, green: 1, blue: 1 },
+            secondBandColor: { red: 0.965, green: 0.976, blue: 0.984 },
+          },
+        },
       },
     },
   ];

@@ -112,6 +112,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Project Tracker Tools')
     .addItem('Generate Project Tracker', 'generateProjectTracker')
+    .addItem('Snapshot Financial History Now', 'snapshotFinancialHistoryNow')
     .addToUi();
 }
 
@@ -460,27 +461,62 @@ function ensureWeeklyFinancialTrigger() {
 
 // Snapshots whatever the Estimation tab's current Actual Revenue/Subcon
 // Cost/Resources cells say (H2/J2/L2) into a new dated row on the
-// Financial History tab. Fires weekly regardless of whether those cells
-// changed — an unchanged week just logs the same numbers again, which is
-// what lets the dashboard show a flat trend line rather than a gap.
-function weeklyFinancialSnapshot() {
+// Financial History tab. Returns false (no-op) if either tab is missing —
+// e.g. a tracker generated before the Financial History feature existed —
+// rather than throwing, since both the silent weekly trigger and the menu
+// item below share this.
+function appendFinancialSnapshot() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var est = ss.getSheetByName(EST_SHEET_NAME);
   var history = ss.getSheetByName(FINANCIAL_HISTORY_SHEET_NAME);
-  if (!est || !history) return;
+  if (!est || !history) return false;
 
   var actualRevenue = est.getRange('H2').getValue();
   var actualSubconCost = est.getRange('J2').getValue();
   var actualResources = est.getRange('L2').getValue();
 
   history.appendRow([new Date(), actualRevenue, actualSubconCost, actualResources]);
+  return true;
 }
+
+// The weekly trigger's handler — fires regardless of whether the Actual
+// cells changed since last time; an unchanged week just logs the same
+// numbers again, which is what lets the dashboard show a flat trend line
+// rather than a gap. Silent by design (no UI — a time trigger has no user
+// to alert).
+function weeklyFinancialSnapshot() {
+  appendFinancialSnapshot();
+}
+
+// Menu-invoked version of the same snapshot, for anyone who wants to see a
+// row land in Financial History right now instead of waiting for the next
+// Monday 6am run — e.g. right after entering this week's Actuals.
+function snapshotFinancialHistoryNow() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = appendFinancialSnapshot();
+  if (ok) {
+    ui.alert('Snapshot added to Financial History with today\\'s date and the current Actual Revenue/Subcon Cost/Resources from the Estimation tab.');
+  } else {
+    ui.alert('Could not find the Financial History tab — this tracker may have been generated before that feature existed.');
+  }
+}
+
+// Same navy-ish accent as the Estimation tab's border treatment
+// (lib/googleSheets.ts's BORDER_ACCENT), kept as a literal here since Apps
+// Script and the Next.js codebase don't share constants.
+var TRACK_BORDER_ACCENT = '#1c4f6e';
+var TRACK_BORDER_LIGHT = '#d0d0d0';
+var TRACK_BLOCK_TINT = '#F5F8FA';
 
 function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
   var boldRange = track.getRange(1, 1, 2, totalCols);
   boldRange.setFontWeight('bold');
   boldRange.setBackground('#EDEEF2');
   boldRange.setHorizontalAlignment('center');
+
+  // Keep Deliverable Name / RAG / Current Stage in view while scrolling
+  // right through however many task blocks this project has.
+  track.setFrozenColumns(TRACK_LEADING_COLS);
 
   // Vertically merge the leading single-row-concept headers across both header rows.
   track.getRange(1, 1, 2, 1).merge(); // Deliverable Name
@@ -493,6 +529,42 @@ function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
     var startCol = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK + 1;
     track.getRange(1, startCol, 1, TRACK_COLS_PER_TASK).merge();
   });
+
+  if (rowCount > 0) {
+    // Make the deliverable name stand out as an anchor while scanning
+    // across many task columns.
+    track.getRange(3, 1, rowCount, 1).setFontWeight('bold');
+
+    // A light alternating tint per task block (not per row) — since each
+    // task's own Status cell already carries its own semantic color via
+    // conditional formatting below, this instead makes it obvious at a
+    // glance where "Task 1" ends and "Task 2" begins across the row.
+    slots.forEach(function (label, idx) {
+      if (idx % 2 === 1) {
+        var startCol = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK + 1;
+        track.getRange(3, startCol, rowCount, TRACK_COLS_PER_TASK).setBackground(TRACK_BLOCK_TINT);
+      }
+    });
+  }
+
+  var totalRows = 2 + rowCount;
+  var fullRange = track.getRange(1, 1, totalRows, totalCols);
+
+  // Thin grid lines across the whole table, then a heavier outline and
+  // header/data separator on top, so it reads as one deliberately designed
+  // table instead of a bare grid.
+  fullRange.setBorder(true, true, true, true, true, true, TRACK_BORDER_LIGHT, SpreadsheetApp.BorderStyle.SOLID);
+  fullRange.setBorder(true, true, true, true, null, null, TRACK_BORDER_ACCENT, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  track.getRange(2, 1, 1, totalCols).setBorder(null, null, true, null, null, null, TRACK_BORDER_ACCENT, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  // A heavier vertical line at the start of every task block (and before
+  // the trailing Quality % column) — the actual "differentiate the tasks"
+  // divider, on top of the alternating tint above.
+  slots.forEach(function (label, idx) {
+    var startCol = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK + 1;
+    track.getRange(1, startCol, totalRows, 1).setBorder(null, true, null, null, null, null, TRACK_BORDER_ACCENT, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  });
+  track.getRange(1, totalCols, totalRows, 1).setBorder(null, true, null, null, null, null, TRACK_BORDER_ACCENT, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
   var lists = ss.getSheetByName(LISTS_SHEET_NAME);
   var conditionalRules = [];

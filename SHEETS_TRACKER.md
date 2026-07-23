@@ -95,6 +95,25 @@ it's planning data, not something the tracker preserves across a
 regenerate). The trailing **Quality %** column is one per deliverable
 (0–100), entered directly here by the PM — nothing calculates it.
 
+### Look and feel
+
+Every regenerate also (re)applies a full pass of visual formatting, so this
+never looks like a bare data grid:
+
+- **Deliverable Name and Current Stage stay in view** while you scroll
+  right — the first 10 columns are frozen.
+- **A vertical divider before every task block** (and before the trailing
+  Quality % column) makes it obvious at a glance where one task's columns
+  end and the next one's begin.
+- **A light alternating tint** across every other task block reinforces the
+  same grouping, independent of whatever color a Status cell happens to be
+  showing.
+- **Borders throughout** — a thin grid over every cell, a heavier outline
+  around the whole table, and a heavier line separating the header rows
+  from the data.
+- **The Deliverable Name column is bolded** so it reads as an anchor while
+  scanning across a wide row.
+
 ### The "Generate Project Tracker" button
 
 Open the sheet and look for **Project Tracker Tools** in the menu bar (next
@@ -218,6 +237,11 @@ back into.
 the dashboard handles that gracefully — it just shows no financial trend
 for that project rather than erroring. There's currently no way to add this
 tab to an already-generated sheet short of creating a new project.
+
+**Don't want to wait for Monday?** **Project Tracker Tools → Snapshot
+Financial History Now** runs the same logic on demand — useful right after
+updating this week's Actuals, so you can see it land immediately instead of
+waiting for the next scheduled run.
 
 ## Business Unit Head sharing
 
