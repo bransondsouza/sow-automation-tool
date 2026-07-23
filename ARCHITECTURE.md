@@ -30,6 +30,7 @@ is added. This document describes the target end state; the current build covers
 | Business-day scheduling | **date-holidays** (npm) | Computes each selected country's public holidays server-side (Apps Script's sandbox has no npm access) and bakes the result into the tracker's in-sheet script at generation time — see the Phase 2 write-up below. |
 | Notifications | **Google Chat** (incoming webhook) + **Gmail API** | Phase 4: posts to a space and/or emails a client-ready summary (with the deck attached as PDF) when a status report is generated. |
 | Risk Assistant chat bot | **Google Gemini API** (`@google/genai`) | A separate AI provider from the SOW extraction step above, used deliberately — this piece is expected to move onto the company's Gemini/internal-LLM stack, so it's built on Gemini from the start. Grounded on every message by a fresh live read of the project's tracker sheet (`lib/gemini.ts`, `/api/dashboard/risk-bot`); no data is persisted for this feature. |
+| Daily Task Alerts | **Vercel Cron** + a single AES-256-GCM-encrypted Google refresh token per person | The one background job in this app that has to run with nobody's browser open, so it needs one long-lived credential stored server-side (`lib/tokenStore.ts`, `user_google_tokens` table) — encrypted at rest, and the only such credential anywhere in the app; every other feature reads live using whoever's browser session is open. |
 
 Nothing here needs you to run a server, manage Docker, or touch a terminal after
 the one-time setup. Day to day, employees only ever see the web page.
@@ -102,6 +103,19 @@ Status Report" button and the Chat notification.
   itself — nothing is fetched over the network at request time, so there's
   no new third-party service in the request path and no new account to set
   up in Google Cloud.
+- **Daily Task Alerts is the one exception to "no shared credentials," and
+  it's deliberately narrow.** Every sign-in already requests offline
+  access and receives a refresh token (`access_type: "offline"`,
+  `prompt: "consent"` in `lib/authOptions.ts`) — this feature's only change
+  is to also encrypt and persist that token (AES-256-GCM, a dedicated
+  `TOKEN_ENCRYPTION_KEY` never shared with any other secret) so a daily
+  Vercel Cron job can act as that person without them being signed in.
+  Nothing about the consent screen, scopes, or what the app can access
+  changes — the cron job can only ever do what that person could already
+  do themselves, same as every other feature. The cron endpoint itself is
+  protected by `CRON_SECRET`, which Vercel sends back as a Bearer header
+  on every scheduled invocation and which this app verifies before doing
+  anything.
 
 ---
 
@@ -216,6 +230,18 @@ or the deck itself):
 Whatever webhook URL and recipient list were used are saved back onto that
 project's dashboard link, so the panel comes back pre-filled next time. See
 `DASHBOARD.md` for the full explanation.
+
+**Daily Task Alerts ✅ built**
+A Vercel Cron job (`GET /api/cron/daily-alerts`, once a day) checks every
+project on anyone's dashboard for three conditions: tasks past their
+Baseline Date, tasks still `YTS` past their own Plan Date, and tasks due
+today (Plan Date if set, else Baseline Date) — see `lib/alerts.ts`. Each
+flagged assignee (matched by name to the Lists tab's Email column) gets one
+digest email of everything of theirs that's flagged; a project's Chat
+webhook, if one's configured, gets a one-message summary. It re-checks and
+resends fresh every day rather than tracking "already alerted" state — see
+`DASHBOARD.md`'s "Daily Task Alerts" section for the full design and the
+scope decisions behind it.
 
 ---
 

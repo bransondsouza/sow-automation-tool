@@ -3,5 +3,11 @@
     "app/api/upload/route.ts": {
       "maxDuration": 300
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/daily-alerts",
+      "schedule": "0 7 * * *"
+    }
+  ]
 }

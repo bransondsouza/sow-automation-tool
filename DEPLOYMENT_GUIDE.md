@@ -44,6 +44,39 @@ scope, no account to sign up for — the holiday data ships inside the npm
 package itself. This only affects **new** uploads going forward; sheets
 generated before this update keep their original weekends-only schedule.
 
+**Already deployed and just pulled the Daily Task Alerts update?** Do four
+things:
+1. In Supabase → SQL Editor → New query, run this (safe to run more than
+   once, and safe to just paste the *entire* `supabase/schema.sql` file
+   instead if that's easier — every statement in it is idempotent):
+   ```sql
+   create table if not exists user_google_tokens (
+     user_email text primary key,
+     encrypted_refresh_token text not null,
+     updated_at timestamptz not null default now()
+   );
+
+   drop trigger if exists user_google_tokens_set_updated_at on user_google_tokens;
+   create trigger user_google_tokens_set_updated_at
+     before update on user_google_tokens
+     for each row execute function set_updated_at();
+   ```
+2. In Vercel → Project → Settings → Environment Variables, add
+   `TOKEN_ENCRYPTION_KEY` and `CRON_SECRET` — see `.env.example` for what
+   each is and how to generate one (`openssl rand -base64 32` for both).
+3. `git push` and redeploy — Vercel reads the new `crons` entry in
+   `vercel.json` automatically; no separate "enable cron" step.
+4. Have everyone who already links projects on their dashboard **sign out
+   and back in once** — the refresh token this feature stores is only
+   captured at sign-in, so nobody gets alerts run on their behalf for a
+   project until they've done this once after the update goes live. Nothing
+   to do in Google Cloud: no new API, no new OAuth scope — this reuses the
+   offline access every sign-in already requests.
+
+> **Cron jobs only run on your Production deployment**, and only once you've
+> set both env vars above (the endpoint returns Unauthorized without
+> `CRON_SECRET`). Preview deployments never trigger it.
+
 ---
 
 ## What you'll create, in order
@@ -208,6 +241,9 @@ project was set up.
    | `SUPABASE_SERVICE_ROLE_KEY` | From step 3 |
    | `SUPABASE_STORAGE_BUCKET` | `sow-uploads` |
    | `DEFAULT_TEMPLATE_ID` | From step 4 |
+   | `GEMINI_API_KEY` | Optional — powers the dashboard's Risk Assistant; leave blank to skip it for now |
+   | `TOKEN_ENCRYPTION_KEY` | Generate with `openssl rand -base64 32` — powers Daily Task Alerts |
+   | `CRON_SECRET` | Generate with `openssl rand -base64 32` — powers Daily Task Alerts |
 
 5. Click **Deploy**. Wait for the build to finish, then copy the live URL
    Vercel gives you (something like `sow-automation-tool.vercel.app`).

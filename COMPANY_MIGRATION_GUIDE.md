@@ -204,6 +204,8 @@ Either way, that file ID is your new `DEFAULT_TEMPLATE_ID`.
    | `SUPABASE_SERVICE_ROLE_KEY` | From Step 4 |
    | `SUPABASE_STORAGE_BUCKET` | `sow-uploads` |
    | `DEFAULT_TEMPLATE_ID` | From Step 5 |
+   | `TOKEN_ENCRYPTION_KEY` | Generate a fresh one with `openssl rand -base64 32` — powers Daily Task Alerts. Generate a new value for the company environment; don't carry over the personal one. |
+   | `CRON_SECRET` | Generate a fresh one with `openssl rand -base64 32` — powers Daily Task Alerts. Same note: a new value, not a carried-over one. |
 
 4. **Deploy**. Once it finishes, copy the live URL (something like
    `sow-automation-tool-yourcompany.vercel.app`).

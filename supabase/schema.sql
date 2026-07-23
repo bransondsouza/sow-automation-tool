@@ -78,6 +78,26 @@ create table if not exists dashboard_links (
 
 create index if not exists dashboard_links_user_email_idx on dashboard_links (user_email);
 
+-- Daily alerts: one encrypted Google refresh token per person, so the
+-- unattended daily check (Vercel Cron, /api/cron/daily-alerts) can read
+-- someone's tracker sheets and send email/Chat alerts without their
+-- browser open. This is the ONLY server-stored long-lived Google
+-- credential anywhere in this app — every other feature reads live using
+-- the signed-in person's own session token, which never touches disk.
+-- Populated automatically by lib/authOptions.ts on every sign-in
+-- (encrypted with TOKEN_ENCRYPTION_KEY — see lib/tokenStore.ts); never
+-- written to or read from the browser.
+create table if not exists user_google_tokens (
+  user_email text primary key,
+  encrypted_refresh_token text not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists user_google_tokens_set_updated_at on user_google_tokens;
+create trigger user_google_tokens_set_updated_at
+  before update on user_google_tokens
+  for each row execute function set_updated_at();
+
 -- Row Level Security: the app's server code uses the Supabase *service role*
 -- key, which always bypasses RLS — these policies only matter if you later
 -- let the browser query Supabase directly with a user's own session.

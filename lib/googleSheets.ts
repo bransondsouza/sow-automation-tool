@@ -38,7 +38,7 @@ const DEPENDENCY_OPTIONS = ["Non-dependent", "Dependent"];
 // Resource Allocation Summary now lives to the right of the task table
 // (see point 4) so it doesn't get pushed further down as more deliverables
 // are added below the task table.
-const SUMMARY_COL = { NAME: "J", TOTAL: "K" };
+const SUMMARY_COL = { NAME: "J", TOTAL: "K", EMAIL: "L" };
 const SUMMARY_HEADER_ROW = 4;
 const SUMMARY_FIRST_ROW = 6;
 const SUMMARY_ROWS = 30; // Total-hours formulas pre-written this far down
@@ -279,20 +279,27 @@ function buildResourceSummaryValues(): unknown[][] {
   // writing anything below it would block the auto-expand ("spill").
   const rows: unknown[][] = [
     ["Resource Allocation Summary"],
-    ["Team Member", "Total Allocated Hours"],
+    ["Team Member", "Total Allocated Hours", "Email"],
     [`=FILTER(${LISTS_SHEET_NAME}!$B$2:$B$${LIST_ROOM_ROWS + 1}, ${LISTS_SHEET_NAME}!$B$2:$B$${LIST_ROOM_ROWS + 1}<>"")`],
   ];
 
-  // Total Allocated Hours: one formula per row, each referencing only its
-  // own row's (possibly spilled-into) Name cell — safe to pre-write all of
-  // these up front since they live in a different column than the spill.
+  // Total Allocated Hours and Email: one formula per row each, both
+  // referencing only their own row's (possibly spilled-into) Name cell —
+  // safe to pre-write all of these up front since they live in different
+  // columns than the spill. Email is a live VLOOKUP against the Lists tab
+  // (the actual place emails are entered — see buildListsValues) rather
+  // than a second manually-typed column, since a manual column sitting
+  // directly beside a growing/shrinking FILTER spill would drift out of
+  // alignment with it over time.
   for (let i = 0; i < SUMMARY_ROWS; i++) {
     const summaryRow = SUMMARY_FIRST_ROW + i;
     const nameCell = `${SUMMARY_COL.NAME}${summaryRow}`;
+    const hoursFormula = buildSummaryFormula(nameCell);
+    const emailFormula = buildEmailLookupFormula(nameCell);
     if (i === 0) {
-      rows[2].push(buildSummaryFormula(nameCell));
+      rows[2].push(hoursFormula, emailFormula);
     } else {
-      rows.push(["", buildSummaryFormula(nameCell)]);
+      rows.push(["", hoursFormula, emailFormula]);
     }
   }
 
@@ -301,6 +308,10 @@ function buildResourceSummaryValues(): unknown[][] {
 
 function buildSummaryFormula(nameCellRef: string): string {
   return `=IF(${nameCellRef}="","",SUMPRODUCT(ISNUMBER(SEARCH(${nameCellRef},$${EST_COL.TEAM}$${ESTIMATION_FIRST_TASK_ROW}:$${EST_COL.TEAM}$${TASK_TABLE_SCAN_LAST_ROW}))*N($${EST_COL.EFFORT_PER_MEMBER}$${ESTIMATION_FIRST_TASK_ROW}:$${EST_COL.EFFORT_PER_MEMBER}$${TASK_TABLE_SCAN_LAST_ROW})))`;
+}
+
+function buildEmailLookupFormula(nameCellRef: string): string {
+  return `=IF(${nameCellRef}="","",IFERROR(VLOOKUP(${nameCellRef},${LISTS_SHEET_NAME}!$B$2:$C$${LIST_ROOM_ROWS + 1},2,FALSE),""))`;
 }
 
 function buildTrackingPlaceholderValues(): unknown[][] {
@@ -317,11 +328,15 @@ function buildListsValues(teamRoster: string[]): unknown[][] {
   const roster = teamRoster.length > 0 ? teamRoster : [];
 
   const rows: unknown[][] = [
-    ["Status Options — edit this column to add/rename statuses used on the Tracking tab", "Team Roster — edit this column to manage who can be picked as Assigned To / Owner"],
+    [
+      "Status Options — edit this column to add/rename statuses used on the Tracking tab",
+      "Team Roster — edit this column to manage who can be picked as Assigned To / Owner",
+      "Email — one per roster row, same row as their name. Used for daily delayed/due-today task alerts; leave blank for anyone who shouldn't get them.",
+    ],
   ];
 
   for (let i = 0; i < LIST_ROOM_ROWS; i++) {
-    rows.push([statuses[i] ?? "", roster[i] ?? ""]);
+    rows.push([statuses[i] ?? "", roster[i] ?? "", ""]);
   }
 
   return rows;
@@ -359,16 +374,17 @@ function headerFormattingRequests(): sheets_v4.Schema$Request[] {
       },
     },
     {
-      // Resource Allocation Summary title + headers (columns J-K)
+      // Resource Allocation Summary title + headers (columns J-L, now
+      // including the live Email lookup column)
       repeatCell: {
-        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: SUMMARY_HEADER_ROW - 1, endRowIndex: SUMMARY_HEADER_ROW + 1, startColumnIndex: 9, endColumnIndex: 11 },
+        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: SUMMARY_HEADER_ROW - 1, endRowIndex: SUMMARY_HEADER_ROW + 1, startColumnIndex: 9, endColumnIndex: 12 },
         cell: bold,
         fields: "userEnteredFormat(textFormat,backgroundColor)",
       },
     },
     {
       repeatCell: {
-        range: { sheetId: LISTS_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 2 },
+        range: { sheetId: LISTS_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 3 },
         cell: { userEnteredFormat: { textFormat: { bold: true }, wrapStrategy: "WRAP" } },
         fields: "userEnteredFormat(textFormat,wrapStrategy)",
       },
@@ -544,6 +560,21 @@ function columnWidthRequests(): sheets_v4.Schema$Request[] {
       updateDimensionProperties: {
         range: { sheetId: FINANCIAL_HISTORY_SHEET_ID, dimension: "COLUMNS", startIndex: 0, endIndex: 4 },
         properties: { pixelSize: 170 },
+        fields: "pixelSize",
+      },
+    },
+    {
+      // Estimation column L — the Resource Allocation Summary's Email lookup
+      updateDimensionProperties: {
+        range: { sheetId: ESTIMATION_SHEET_ID, dimension: "COLUMNS", startIndex: 11, endIndex: 12 },
+        properties: { pixelSize: 200 },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId: LISTS_SHEET_ID, dimension: "COLUMNS", startIndex: 0, endIndex: 3 },
+        properties: { pixelSize: 260 },
         fields: "pixelSize",
       },
     },

@@ -40,3 +40,50 @@ export async function postToGoogleChat(webhookUrl: string, snapshot: ProjectSnap
     throw new Error(`Google Chat webhook responded ${response.status}: ${body.slice(0, 300)}`);
   }
 }
+
+export interface AlertDigestSummary {
+  delayedCount: number;
+  ytsWithPlanCount: number;
+  dueTodayCount: number;
+  byAssignee: { name: string; count: number }[];
+}
+
+/**
+ * Posts the daily task-alert digest to a project's Chat webhook (same
+ * webhook field as the Client Status Report — set once per dashboard link,
+ * reused for both). One message per project per day, summarizing counts
+ * rather than every task line, so the space doesn't get spammed.
+ */
+export async function postAlertDigestToGoogleChat(
+  webhookUrl: string,
+  projectName: string,
+  sheetUrl: string,
+  summary: AlertDigestSummary
+): Promise<void> {
+  const total = summary.delayedCount + summary.ytsWithPlanCount + summary.dueTodayCount;
+
+  const lines = [
+    `*Daily task alert — ${projectName}*`,
+    "",
+    `⏰ ${total} task${total === 1 ? "" : "s"} flagged today`,
+    `Delayed: ${summary.delayedCount} · Yet to Start (past Plan Date): ${summary.ytsWithPlanCount} · Due today: ${summary.dueTodayCount}`,
+  ];
+
+  if (summary.byAssignee.length > 0) {
+    lines.push("", "By person:");
+    summary.byAssignee.forEach((a) => lines.push(`- ${a.name}: ${a.count}`));
+  }
+
+  lines.push("", `<${sheetUrl}|Open the tracker>`);
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify({ text: lines.join("\n") }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Google Chat webhook responded ${response.status}: ${body.slice(0, 300)}`);
+  }
+}

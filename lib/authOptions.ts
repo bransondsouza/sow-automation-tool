@@ -1,5 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { persistRefreshToken, exchangeRefreshToken } from "./tokenStore";
 
 // These are the Google permissions the app asks each employee to grant when
 // they sign in. Every one of them is required for a feature described in the
@@ -66,26 +67,14 @@ interface RefreshableToken {
 // of forcing the employee to sign in again.
 async function refreshAccessToken(token: RefreshableToken): Promise<RefreshableToken> {
   try {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: token.refreshToken ?? "",
-      }),
-    });
-
-    const refreshed = await response.json();
-    if (!response.ok) throw refreshed;
+    const refreshed = await exchangeRefreshToken(token.refreshToken ?? "");
 
     return {
       ...token,
-      accessToken: refreshed.access_token,
-      accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+      accessToken: refreshed.accessToken,
+      accessTokenExpires: Date.now() + refreshed.expiresIn * 1000,
       // Google doesn't always send back a new refresh token — keep the old one.
-      refreshToken: refreshed.refresh_token ?? token.refreshToken,
+      refreshToken: refreshed.refreshToken ?? token.refreshToken,
       error: undefined,
     };
   } catch (error) {
@@ -114,6 +103,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account }) {
       // First sign-in: persist the tokens Google just issued.
       if (account) {
+        // Best-effort: also save the refresh token (encrypted) to Supabase,
+        // so the daily alert cron can read this person's tracker sheets
+        // without their browser open. Never let a Supabase/encryption
+        // hiccup here block sign-in itself.
+        if (account.refresh_token && token.email) {
+          try {
+            await persistRefreshToken(token.email, account.refresh_token);
+          } catch (error) {
+            console.error("Failed to persist Google refresh token for daily alerts:", error);
+          }
+        }
+
         return {
           ...token,
           accessToken: account.access_token,

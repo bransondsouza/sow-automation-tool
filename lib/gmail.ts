@@ -143,3 +143,94 @@ export async function sendStatusReportEmail({ accessToken, to, snapshot, report 
     requestBody: { raw: toBase64Url(raw) },
   });
 }
+
+// ─────────────────────────── Daily task alerts ───────────────────────────
+// Deliberately doesn't import anything from lib/alerts.ts (which is what
+// calls sendTaskAlertEmail) — that would make the two files import each
+// other. TaskAlertLine is a plain, local shape instead.
+
+export interface TaskAlertLine {
+  deliverableName: string;
+  slotLabel: string;
+  categoryLabel: string;
+  effectiveDate: string;
+  status: string;
+}
+
+export interface SendTaskAlertEmailOptions {
+  accessToken: string;
+  to: string;
+  assignedToName: string;
+  projectName: string;
+  sheetUrl: string;
+  lines: TaskAlertLine[];
+}
+
+/**
+ * Sends one person's daily task-alert digest as the signed-in employee's
+ * own Gmail — same "not a shared mailbox, new message only" model as
+ * sendStatusReportEmail above. Called once per assignee per project per
+ * day by the cron route (app/api/cron/daily-alerts); resends every day a
+ * task is still flagged, by design — there's no per-task "already sent"
+ * state to track.
+ */
+export async function sendTaskAlertEmail({
+  accessToken,
+  to,
+  assignedToName,
+  projectName,
+  sheetUrl,
+  lines,
+}: SendTaskAlertEmailOptions): Promise<void> {
+  if (lines.length === 0) return;
+
+  const auth = buildAuthClient(accessToken);
+  const gmail = google.gmail({ version: "v1", auth });
+
+  const rows = lines
+    .map(
+      (l) => `
+      <tr>
+        <td style="padding:6px 12px 6px 0; border-bottom:1px solid #e5e5e5;">${escapeHtml(l.deliverableName)}</td>
+        <td style="padding:6px 12px 6px 0; border-bottom:1px solid #e5e5e5;">${escapeHtml(l.slotLabel)}</td>
+        <td style="padding:6px 12px 6px 0; border-bottom:1px solid #e5e5e5;">${escapeHtml(l.categoryLabel)}</td>
+        <td style="padding:6px 12px 6px 0; border-bottom:1px solid #e5e5e5;">${escapeHtml(l.effectiveDate || "—")}</td>
+        <td style="padding:6px 0 6px 0; border-bottom:1px solid #e5e5e5;">${escapeHtml(l.status || "—")}</td>
+      </tr>`
+    )
+    .join("");
+
+  const count = lines.length;
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; color: #1a1a1a; max-width: 640px;">
+      <h2 style="color:#1d4e6d; margin-bottom: 4px;">${escapeHtml(projectName)}</h2>
+      <p style="color:#5c7487; margin-top: 0;">Hi ${escapeHtml(assignedToName)} — you have ${count} task${count === 1 ? "" : "s"} needing attention today:</p>
+      <table style="border-collapse: collapse; width:100%; font-size: 14px;">
+        <tr style="text-align:left; color:#5c7487;">
+          <th style="padding:0 12px 6px 0;">Deliverable</th>
+          <th style="padding:0 12px 6px 0;">Task</th>
+          <th style="padding:0 12px 6px 0;">Why</th>
+          <th style="padding:0 12px 6px 0;">Date</th>
+          <th style="padding:0;">Status</th>
+        </tr>
+        ${rows}
+      </table>
+      <p style="margin-top:16px;"><a href="${sheetUrl}" style="color:#1d4e6d;">Open the tracker</a></p>
+      <p style="color:#9aa8b3; font-size:12px; margin-top: 24px;">
+        You're getting this because your name is on this project's task list with an email on file on the Lists tab.
+        This resends every day a task stays flagged — no action needed here beyond updating the tracker itself.
+      </p>
+    </div>
+  `.trim();
+
+  const raw = buildMimeMessage({
+    to: [to],
+    subject: `${projectName} — ${count} task${count === 1 ? "" : "s"} need${count === 1 ? "s" : ""} your attention`,
+    htmlBody,
+  });
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: toBase64Url(raw) },
+  });
+}

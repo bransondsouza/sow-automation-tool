@@ -338,3 +338,61 @@ ever lets the app compose a brand-new message as you — it can't read or
 search your inbox. If you signed in before this feature was added, the
 first attempt will fail with a message asking you to sign out and back in
 once to grant it; after that it works normally.
+
+## Daily Task Alerts
+
+Unlike everything else on this page, this feature has **no button and no UI
+on the dashboard** — it runs by itself, once a day, for every project
+anyone has on their dashboard. It exists so a delayed or due task gets
+noticed without anyone having to open the tracker or the dashboard to look.
+
+**What it checks, per task, per project, every day:**
+
+| Category | Condition |
+|---|---|
+| Delayed | Not Completed, and its Baseline Date has already passed. |
+| Yet to Start, past Plan Date | Status is `YTS`, and it has a Plan Date that has already passed. |
+| Due today | Not Completed, and its **Plan Date if one is set, else its Baseline Date**, is today. |
+
+Every task lands in exactly **one** of these — checked in that order, so a
+task that's both delayed and technically "due today" by its Plan Date only
+shows up once, under Delayed (the more urgent signal).
+
+**Who gets alerted, and how:**
+
+- Each **Assigned To** name is matched against the Lists tab's roster
+  (column B) to find their email (column C) — see `SHEETS_TRACKER.md`'s
+  "Tab 3: Lists" section. **A blank email is how someone opts out** —
+  there's no separate setting.
+- Everyone with at least one flagged task gets **one email** listing all of
+  their flagged tasks for that project (deliverable, task, why it's
+  flagged, the date, and current status) — not one email per task.
+- If the project's dashboard link has a **Chat webhook URL** configured
+  (the same field used by Generate Client Status Report, above), one
+  summary message posts there too — counts by category and by person, not
+  every task line, so the space doesn't get spammed. If more than one
+  person linked the same project with different webhook URLs, the first
+  one found is used — this is a per-project digest, not a per-person one.
+- **Resends every day** a task is still flagged. This is deliberate, not a
+  bug: there's no "already alerted" tracking, so a task that's still
+  overdue tomorrow shows up again tomorrow rather than going quiet after
+  one email.
+
+**How it runs without anyone's browser open:** every time someone signs in,
+this app now also saves an encrypted copy of the long-lived Google refresh
+token their sign-in issues (see `lib/tokenStore.ts` and the
+`user_google_tokens` table in `supabase/schema.sql`) — this is the **only**
+Google credential this app stores server-side; every other feature reads
+live using whoever's browser session is open. A scheduled job (Vercel Cron,
+`GET /api/cron/daily-alerts`, see `vercel.json`) runs once a day, finds a
+stored token for someone who linked each project, exchanges it for a fresh
+access token, and reads/sends exactly as that feature already does when a
+person is signed in — same Gmail scope, same Sheets read. If nobody who
+linked a given project has signed in since this feature shipped, that one
+project is skipped for that run (everything else still runs) until someone
+does.
+
+Requires `TOKEN_ENCRYPTION_KEY` and `CRON_SECRET` to be set (see
+`.env.example`) — without them, sign-in and the dashboard work exactly as
+before, but the daily cron endpoint returns Unauthorized and nothing gets
+checked.

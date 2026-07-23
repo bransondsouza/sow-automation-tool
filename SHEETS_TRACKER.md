@@ -65,17 +65,23 @@ The checkbox is pre-installed all the way down column H, so it's always
 ready the instant you type a new deliverable name — nothing needs to run
 first.
 
-### Resource Allocation Summary (columns J-K)
+### Resource Allocation Summary (columns J-L)
 
 This sits to the **right** of the task table (not below it) so it doesn't
 get pushed further down as you add more deliverables. It lists every name
-on the Lists tab's roster and totals their allocated hours across every
-task, on every deliverable, they're assigned to.
+on the Lists tab's roster, totals their allocated hours across every task
+on every deliverable they're assigned to, and shows their email (column L)
+— looked up live from the Lists tab, not typed here.
 
-**It updates itself automatically.** Add a name to the Lists tab's roster
-column and it appears here immediately — no regenerating, no re-running
-anything. This is a live spreadsheet formula (`FILTER`), not something the
-button builds.
+**It updates itself automatically.** Add a name (and email) to the Lists
+tab's roster and both appear here immediately — no regenerating, no
+re-running anything. Team Member and Email are both live spreadsheet
+formulas (`FILTER` and `VLOOKUP`), not something you type directly into
+this summary.
+
+**The Email column is what the daily task alerts use.** A name with no
+email next to it on the Lists tab just never gets an alert — there's no
+separate on/off switch, an empty email is the switch.
 
 ## Tab 2: Project Tracking & Execution
 
@@ -221,6 +227,11 @@ Unhide it any time via *View → Show hidden sheets*:
 - **Column B** — the team roster. Add or remove names and both the
   Assigned To dropdowns *and* the Resource Allocation Summary on Sheet 1
   update immediately.
+- **Column C** — each roster member's email, same row as their name in
+  column B. Powers the daily delayed/YTS-past-due/due-today task alerts —
+  leave a row's email blank and that person just never gets alerted, no
+  separate setting needed. Also shows up as a live readout in the Resource
+  Allocation Summary on Sheet 1, for visibility without unhiding this tab.
 
 ## Tab 4: Financial History
 
