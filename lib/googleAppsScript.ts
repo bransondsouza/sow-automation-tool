@@ -12,12 +12,15 @@ function buildAuthClient(accessToken: string) {
 // the generated spreadsheet. It reads the Estimation & Resource Allocation
 // tab — rows grouped into deliverables, each with its own list of tasks —
 // and builds the Project Tracking & Execution tab as a Deliverable × Task
-// matrix: one row per deliverable, RAG status + current stage, and a
-// repeating 6-column block per task (Assigned To, Hours, Baseline Date,
-// Plan Date, Actual Date, Status). Deliverable 1's task list is the
-// template every other deliverable's columns are matched against. Existing
-// Plan/Actual/Assigned/Hours/Status are preserved across regenerations,
-// matched by (deliverable name, task name). See SHEETS_TRACKER.md.
+// matrix: one row per deliverable, RAG status + current stage, a
+// repeating 7-column block per task (Assigned To, Hours, Baseline Date,
+// Plan Date, Actual Date, Status, Dependency), and a trailing Quality %
+// column. Deliverable 1's task list is the template every other
+// deliverable's columns are matched against. Existing Plan/Actual/
+// Assigned/Hours/Status/Quality % are preserved across regenerations,
+// matched by (deliverable name, task name) or (deliverable name);
+// Dependency is always re-copied fresh from the Estimation tab, the same
+// treatment as Baseline Date. See SHEETS_TRACKER.md.
 //
 // It also installs an onEdit trigger that:
 //  - runs the "Copy Tasks from Deliverable 1" checkbox in column H,
@@ -41,10 +44,13 @@ function buildCodeGs(holidaysJson: string): string {
 var EST_SHEET_NAME = 'Estimation & Resource Allocation';
 var TRACK_SHEET_NAME = 'Project Tracking & Execution';
 var LISTS_SHEET_NAME = 'Lists';
+var FINANCIAL_HISTORY_SHEET_NAME = 'Financial History';
 var EST_FIRST_ROW = 5;
 var EST_COPY_COL = 8; // column H
+var EST_DEPENDENCY_COL = 9; // column I
 var TRACK_LEADING_COLS = 10; // A Deliverable, B-H spare (7), I RAG, J Current Stage
-var TRACK_COLS_PER_TASK = 6; // Assigned To, Hours, Baseline, Plan, Actual, Status
+var TRACK_COLS_PER_TASK = 7; // Assigned To, Hours, Baseline, Plan, Actual, Status, Dependency
+var DEPENDENCY_VALUES = ['Non-dependent', 'Dependent'];
 
 // date ('YYYY-MM-DD') -> [{country, name}] — every holiday, across every
 // country chosen at generation time, that falls on that date.
@@ -114,7 +120,7 @@ function onOpen() {
 function readDeliverables(est) {
   var lastRow = est.getLastRow();
   if (lastRow < EST_FIRST_ROW) return [];
-  var raw = est.getRange(EST_FIRST_ROW, 1, lastRow - EST_FIRST_ROW + 1, 7).getValues();
+  var raw = est.getRange(EST_FIRST_ROW, 1, lastRow - EST_FIRST_ROW + 1, 9).getValues();
 
   var deliverables = [];
   var current = null;
@@ -124,13 +130,14 @@ function readDeliverables(est) {
     var days = Number(raw[i][2]) || 0;
     var effort = Number(raw[i][3]) || 0;
     var team = String(raw[i][4] || '').trim();
+    var dependency = String(raw[i][8] || '').trim() || DEPENDENCY_VALUES[0];
 
     if (delivName) {
       current = { name: delivName, tasks: [], startRow: EST_FIRST_ROW + i };
       deliverables.push(current);
     }
     if (taskName && current) {
-      current.tasks.push({ name: taskName, days: days, effort: effort, team: team });
+      current.tasks.push({ name: taskName, days: days, effort: effort, team: team, dependency: dependency });
     }
   }
   return deliverables;
@@ -183,6 +190,11 @@ function copyTasksFromDeliverable1(sheet, targetRow) {
     var r = targetRow + i;
     sheet.getRange(r, 6).setFormula('=IF(OR(D' + r + '="",E' + r + '=""),"",D' + r + '/COUNTA(SPLIT(E' + r + ',",")))');
   }
+
+  // Dependency (column I) is copied separately from the A-G range above so
+  // the checkbox column (H), sitting between them, is never touched.
+  var dependencyValues = template.tasks.map(function (t) { return [t.dependency || DEPENDENCY_VALUES[0]]; });
+  sheet.getRange(targetRow, EST_DEPENDENCY_COL, dependencyValues.length, 1).setValues(dependencyValues);
 }
 
 // ───────────────────────── RAG + Current Stage ─────────────────────────
@@ -255,16 +267,26 @@ function computeRagAndStage(taskCells, slots) {
 function readExistingTracking(track) {
   var lastRow = track.getLastRow();
   var lastCol = track.getLastColumn();
-  if (lastRow < 3 || lastCol < TRACK_LEADING_COLS + TRACK_COLS_PER_TASK) return {};
+  if (lastRow < 3 || lastCol < TRACK_LEADING_COLS + TRACK_COLS_PER_TASK) return { tasks: {}, quality: {} };
 
   var header1 = track.getRange(1, 1, 1, lastCol).getValues()[0];
   var existingSlotLabels = [];
-  for (var col = TRACK_LEADING_COLS; col < lastCol; col += TRACK_COLS_PER_TASK) {
+  for (var col = TRACK_LEADING_COLS; col + TRACK_COLS_PER_TASK <= lastCol; col += TRACK_COLS_PER_TASK) {
     existingSlotLabels.push(String(header1[col] || '').trim());
   }
 
+  // The trailing Quality % column, if this sheet already has one, is found
+  // by its header label rather than assumed to be at a fixed position —
+  // older trackers (generated before this column existed) won't have it at
+  // all, and its position shifts with however many task slots exist.
+  var qualityCol = -1;
+  for (var c = 0; c < header1.length; c++) {
+    if (String(header1[c] || '').trim() === 'Quality %') { qualityCol = c; break; }
+  }
+
   var data = track.getRange(3, 1, lastRow - 2, lastCol).getValues();
-  var map = {};
+  var tasks = {};
+  var quality = {};
   data.forEach(function (r) {
     var delivName = String(r[0] || '').trim();
     if (!delivName) return;
@@ -272,7 +294,11 @@ function readExistingTracking(track) {
       if (!label) return;
       var col = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK;
       if (col + TRACK_COLS_PER_TASK > r.length) return;
-      map[delivName + '||' + label] = {
+      // Dependency (col+6) is intentionally NOT preserved here — it's
+      // planning data that always gets freshly re-copied from the
+      // Estimation tab on regenerate (same treatment as Baseline Date),
+      // not an execution-time value like Plan/Actual/Status.
+      tasks[delivName + '||' + label] = {
         assignedTo: r[col + 0],
         hours: r[col + 1],
         plan: r[col + 3],
@@ -280,8 +306,11 @@ function readExistingTracking(track) {
         status: r[col + 5],
       };
     });
+    if (qualityCol >= 0 && qualityCol < r.length) {
+      quality[delivName] = r[qualityCol];
+    }
   });
-  return map;
+  return { tasks: tasks, quality: quality };
 }
 
 function addDays(date, days) {
@@ -323,11 +352,13 @@ function generateProjectTracker() {
   var headerRow1 = ['Deliverable Name', '', '', '', '', '', '', '', 'RAG', 'Current Stage'];
   var headerRow2 = ['', '', '', '', '', '', '', '', '', ''];
   slots.forEach(function (label) {
-    headerRow1.push(label, '', '', '', '', '');
-    headerRow2.push('Assigned To', 'Hours Allocated', 'Baseline Date', 'Plan Date', 'Actual Date', 'Status');
+    headerRow1.push(label, '', '', '', '', '', '');
+    headerRow2.push('Assigned To', 'Hours Allocated', 'Baseline Date', 'Plan Date', 'Actual Date', 'Status', 'Dependency');
   });
+  headerRow1.push('Quality %');
+  headerRow2.push('');
 
-  var totalCols = TRACK_LEADING_COLS + slots.length * TRACK_COLS_PER_TASK;
+  var totalCols = TRACK_LEADING_COLS + slots.length * TRACK_COLS_PER_TASK + 1; // +1 trailing Quality % column
   var outputRows = [];
 
   deliverables.forEach(function (d) {
@@ -355,7 +386,7 @@ function generateProjectTracker() {
           }
         }
 
-        var prior = existing[d.name + '||' + slots[i]];
+        var prior = existing.tasks[d.name + '||' + slots[i]];
         var firstMember = task.team ? task.team.split(',')[0].trim() : '';
         var assignedTo = (prior && prior.assignedTo) ? prior.assignedTo : firstMember;
         var hours = (prior && prior.hours !== '' && prior.hours != null) ? prior.hours : '';
@@ -369,6 +400,9 @@ function generateProjectTracker() {
         row[baseCol + 3] = plan;
         row[baseCol + 4] = actual;
         row[baseCol + 5] = status;
+        // Always freshly copied from Estimation — see readExistingTracking's
+        // comment on why Dependency isn't preserved like Plan/Actual/Status.
+        row[baseCol + 6] = task.dependency || DEPENDENCY_VALUES[0];
 
         taskCellsForRag.push({ baseline: baseline, plan: plan, actual: actual, status: status });
       } else {
@@ -379,6 +413,8 @@ function generateProjectTracker() {
     var result = computeRagAndStage(taskCellsForRag, slots);
     row[8] = result.rag;
     row[9] = result.stage;
+    var priorQuality = existing.quality[d.name];
+    row[totalCols - 1] = (priorQuality !== undefined && priorQuality !== null) ? priorQuality : '';
     outputRows.push(row);
   });
 
@@ -396,8 +432,48 @@ function generateProjectTracker() {
   }
 
   applyTrackingFormatting(ss, track, slots, outputRows.length, totalCols);
+  ensureWeeklyFinancialTrigger();
 
-  ui.alert('Project Tracker generated: ' + deliverables.length + ' deliverable(s), ' + slots.length + ' task column(s). Existing Assigned To, Hours, Plan/Actual dates, and Status were kept for any (deliverable, task) pair that still matches by name.');
+  ui.alert('Project Tracker generated: ' + deliverables.length + ' deliverable(s), ' + slots.length + ' task column(s). Existing Assigned To, Hours, Plan/Actual dates, Status, and Quality % were kept for any deliverable/task that still matches by name. Dependency was re-synced fresh from the Estimation tab.');
+}
+
+// ─────────────────────── Weekly financial snapshot ───────────────────────
+
+// Installs the weekly Financial History snapshot trigger the first time
+// Generate Project Tracker is run (idempotent — checking existing triggers
+// first means re-running Generate Project Tracker never creates
+// duplicates). Deliberately installed here rather than in onOpen: onOpen is
+// a simple trigger and runs with restricted authorization, while this
+// function only ever runs from the menu, which carries the full
+// authorization the PM already granted the first time they used it.
+function ensureWeeklyFinancialTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'weeklyFinancialSnapshot') return;
+  }
+  ScriptApp.newTrigger('weeklyFinancialSnapshot')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(6)
+    .create();
+}
+
+// Snapshots whatever the Estimation tab's current Actual Revenue/Subcon
+// Cost/Resources cells say (H2/J2/L2) into a new dated row on the
+// Financial History tab. Fires weekly regardless of whether those cells
+// changed — an unchanged week just logs the same numbers again, which is
+// what lets the dashboard show a flat trend line rather than a gap.
+function weeklyFinancialSnapshot() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var est = ss.getSheetByName(EST_SHEET_NAME);
+  var history = ss.getSheetByName(FINANCIAL_HISTORY_SHEET_NAME);
+  if (!est || !history) return;
+
+  var actualRevenue = est.getRange('H2').getValue();
+  var actualSubconCost = est.getRange('J2').getValue();
+  var actualResources = est.getRange('L2').getValue();
+
+  history.appendRow([new Date(), actualRevenue, actualSubconCost, actualResources]);
 }
 
 function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
@@ -410,8 +486,9 @@ function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
   track.getRange(1, 1, 2, 1).merge(); // Deliverable Name
   track.getRange(1, 9, 2, 1).merge(); // RAG
   track.getRange(1, 10, 2, 1).merge(); // Current Stage
+  track.getRange(1, totalCols, 2, 1).merge(); // Quality % (trailing column)
 
-  // Merge each task's group header across its 6 columns.
+  // Merge each task's group header across its 7 columns.
   slots.forEach(function (label, idx) {
     var startCol = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK + 1;
     track.getRange(1, startCol, 1, TRACK_COLS_PER_TASK).merge();
@@ -426,6 +503,7 @@ function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
     var ownerRule = SpreadsheetApp.newDataValidation().requireValueInRange(ownerRange, true).setAllowInvalid(true).build();
     var statusRule = SpreadsheetApp.newDataValidation().requireValueInRange(statusRange, true).setAllowInvalid(true).build();
     var dateRule = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).build();
+    var dependencyRule = SpreadsheetApp.newDataValidation().requireValueInList(DEPENDENCY_VALUES, true).setAllowInvalid(true).build();
 
     slots.forEach(function (label, idx) {
       var startCol = TRACK_LEADING_COLS + idx * TRACK_COLS_PER_TASK + 1;
@@ -436,6 +514,7 @@ function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
       dateBlock.setDataValidation(dateRule);
       var statusColRange = track.getRange(3, startCol + 5, rowCount, 1);
       statusColRange.setDataValidation(statusRule);
+      track.getRange(3, startCol + 6, rowCount, 1).setDataValidation(dependencyRule); // Dependency
 
       [
         ['Completed', '#D9F0D3'],
@@ -469,6 +548,12 @@ function applyTrackingFormatting(ss, track, slots, rowCount, totalCols) {
           .build()
       );
     });
+
+    // Quality % (trailing column) — PM-entered, 0-100, shown as a percentage.
+    var qualityRange = track.getRange(3, totalCols, rowCount, 1);
+    var qualityRule = SpreadsheetApp.newDataValidation().requireNumberBetween(0, 100).setAllowInvalid(true).build();
+    qualityRange.setDataValidation(qualityRule);
+    qualityRange.setNumberFormat('0.0"%"');
   }
 
   track.setConditionalFormatRules(conditionalRules);
@@ -533,7 +618,7 @@ function handleTrackingEdit(sheet, range) {
     }
   }
 
-  if (withinBlock >= 2) {
+  if (withinBlock >= 2 && withinBlock <= 5) {
     recomputeRowStatus(sheet, row, slotCount);
   }
 }

@@ -1,6 +1,6 @@
 # How the generated Project Plan & Tracker works
 
-Every upload creates one new Google Sheet with three tabs, plus a small
+Every upload creates one new Google Sheet with four tabs, plus a small
 script attached to the file that adds a menu button and a few automations.
 This document explains the deliverable/task model, the layout, and exactly
 what the button and its automations do.
@@ -16,9 +16,19 @@ live tracking grid — one row per deliverable, one column-block per task.
 ## Tab 1: Estimation & Resource Allocation
 
 - **Row 1** — `Project Start Date` (cell B1), `Project End Date` (cell D1),
-  and `Business Unit Head` (cell F1). Project Start Date is what every
-  deliverable's schedule cascades from. Click into either date cell and
-  Sheets pops up a calendar picker.
+  `Business Unit Head` (cell F1), and three **Projected** financial fields:
+  `Projected Revenue ($)` (H1), `Projected Subcon Cost ($)` (J1), and
+  `Projected Resources (#)` (L1) — set once, at project start. Project Start
+  Date is what every deliverable's schedule cascades from. Click into either
+  date cell and Sheets pops up a calendar picker.
+- **Row 2** — an instructional note (A2) plus three **Actual** financial
+  fields in the same column positions as their Projected counterparts:
+  `Actual Revenue ($)` (H2), `Actual Subcon Cost ($)` (J2), and `Actual
+  Resources (#)` (L2). Update these whenever the real numbers change — no
+  fixed cadence required; a Monday-morning automation (see "Financial
+  History," below) snapshots whatever's here into a dated row every week
+  regardless of whether it changed, so the dashboard always has a full
+  trend even in a flat week.
 - **Row 4** — column headers; rows below are frozen-scroll. Columns:
   - **Deliverable Name** — type a name here to start a new deliverable.
     **Leave it blank** on the rows below to mean "another task under the
@@ -31,6 +41,10 @@ live tracking grid — one row per deliverable, one column-block per task.
     names in Team Members Assigned.
   - **Notes** — free text.
   - **Copy Tasks from Deliverable 1** — a checkbox (see below).
+  - **Dependency** — a dropdown, `Non-dependent` (default) or `Dependent`,
+    meaning "this task depends on the one immediately before it." This is
+    what the dashboard's simplified Critical Path groups tasks by — see
+    `DASHBOARD.md`.
 
 ### Adding a second (third, fourth...) deliverable
 
@@ -41,8 +55,8 @@ For every deliverable after that, you only need to type its name in a new
 row's **Deliverable Name** cell, then **tick the checkbox in column H** on
 that same row. The moment you check it:
 
-- All of Deliverable 1's tasks (names, estimated days, effort, team members)
-  get copied in as new rows under your new deliverable.
+- All of Deliverable 1's tasks (names, estimated days, effort, team members,
+  Dependency) get copied in as new rows under your new deliverable.
 - The checkbox resets itself to unchecked.
 - You can now edit any of the copied values if this deliverable's resourcing
   is different — the copy is a starting point, not a link.
@@ -68,14 +82,18 @@ button builds.
 This tab starts **empty** — it's built entirely by the button below, as a
 matrix:
 
-| Deliverable Name | *(7 spare columns)* | RAG | Current Stage | Task 1 block (6 cols) | Task 2 block (6 cols) | ... |
-|---|---|---|---|---|---|---|
+| Deliverable Name | *(7 spare columns)* | RAG | Current Stage | Task 1 block (7 cols) | Task 2 block (7 cols) | ... | Quality % |
+|---|---|---|---|---|---|---|---|
 
 Each task's block has: **Assigned To** (dropdown, pre-filled from that
 task's Team Members on Sheet 1), **Hours Allocated** (optional, feeds a
 future resource-utilization chart — fine to leave blank), **Baseline Date**,
-**Plan Date**, **Actual Date** (all three with the calendar picker), and
-**Status** (dropdown).
+**Plan Date**, **Actual Date** (all three with the calendar picker),
+**Status** (dropdown), and **Dependency** (dropdown, re-synced fresh from
+the Estimation tab every time you regenerate — unlike Plan/Actual/Status,
+it's planning data, not something the tracker preserves across a
+regenerate). The trailing **Quality %** column is one per deliverable
+(0–100), entered directly here by the PM — nothing calculates it.
 
 ### The "Generate Project Tracker" button
 
@@ -95,9 +113,16 @@ to Help) → **Generate Project Tracker**. What it does:
    Upload form's "Exclude holidays of these countries" field (see below).
 4. Computes **RAG** and **Current Stage** for each deliverable (see below).
 5. **Preserves your work**: Assigned To, Hours Allocated, Plan Date, Actual
-   Date, and Status are kept for any (deliverable, task name) pair that
-   still exists — regenerating never throws away progress you've logged.
+   Date, Status, and Quality % are kept for any (deliverable, task name) or
+   (deliverable) pair that still exists — regenerating never throws away
+   progress you've logged. **Dependency is the one exception** — it's always
+   re-copied fresh from the Estimation tab, the same treatment as Baseline
+   Date, since it's planning data rather than execution progress.
 6. Colors the Status cells and the RAG cell automatically.
+7. The first time it's ever run on a sheet, installs a weekly (Monday,
+   6am) time-based trigger that snapshots the Estimation tab's Actual
+   Revenue/Subcon Cost/Resources into the Financial History tab — see
+   below. Re-running the button never creates a duplicate trigger.
 
 Run it again any time you add deliverables or tasks on the Estimation tab.
 
@@ -177,6 +202,22 @@ Unhide it any time via *View → Show hidden sheets*:
 - **Column B** — the team roster. Add or remove names and both the
   Assigned To dropdowns *and* the Resource Allocation Summary on Sheet 1
   update immediately.
+
+## Tab 4: Financial History
+
+A plain append-only log: `Date`, `Actual Revenue ($)`, `Actual Subcon Cost
+($)`, `Actual Resources (#)` — one new row every Monday at 6am, written by
+the weekly trigger described above. It exists so the dashboard can show a
+trend over time, not just the single current Projected-vs-Actual snapshot
+on the Estimation tab. Nothing here is meant to be edited by hand; if you
+need to correct a historical figure, do it going forward — the log is a
+record of what the Estimation tab said each week, not a source you write
+back into.
+
+**Trackers generated before this feature shipped** don't have this tab, and
+the dashboard handles that gracefully — it just shows no financial trend
+for that project rather than erroring. There's currently no way to add this
+tab to an already-generated sheet short of creating a new project.
 
 ## Business Unit Head sharing
 

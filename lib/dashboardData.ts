@@ -7,8 +7,14 @@ import { extractSheetId } from "./googleSheets";
 // codebase.
 const EST_SHEET_NAME = "Estimation & Resource Allocation";
 const TRACK_SHEET_NAME = "Project Tracking & Execution";
+const FINANCIAL_HISTORY_SHEET_NAME = "Financial History";
 const TRACK_LEADING_COLS = 10; // A Deliverable, B-H spare (7), I RAG, J Current Stage
-const TRACK_COLS_PER_TASK = 6; // Assigned To, Hours, Baseline, Plan, Actual, Status
+// Assigned To, Hours, Baseline, Plan, Actual, Status, Dependency. Trackers
+// generated before the Dependency column shipped had 6 — re-running
+// "Generate Project Tracker" from the sheet's menu upgrades an existing
+// tracker to this layout.
+const TRACK_COLS_PER_TASK = 7;
+const QUALITY_HEADER_LABEL = "Quality %";
 
 const UPCOMING_WINDOW_DAYS = 7;
 const SCHEDULE_DRIFT_THRESHOLD = 15; // percentage points between % time elapsed and % tasks complete
@@ -34,14 +40,66 @@ export interface TaskSnapshot {
   overdue: boolean;
   onTime: boolean | null; // null when not yet completed
   upcoming: boolean;
+  dependency: boolean; // true = "Dependent" on the task immediately before it
 }
 
 export interface DeliverableSnapshot {
   name: string;
   rag: string;
   currentStage: string;
+  qualityPct: number | null; // PM-entered, trailing "Quality %" column; null if not set or column doesn't exist yet
   tasks: TaskSnapshot[];
 }
+
+// ─────────────────────── Financials, EVM, Critical Path ───────────────────────
+
+export interface FinancialHistoryPoint {
+  date: string;
+  actualRevenue: number | null;
+  actualSubconCost: number | null;
+  actualResources: number | null;
+}
+
+export interface FinancialSnapshot {
+  projectedRevenue: number | null;
+  projectedSubconCost: number | null;
+  projectedResources: number | null;
+  actualRevenue: number | null;
+  actualSubconCost: number | null;
+  actualResources: number | null;
+  // true when the actual value has been entered AND differs from the
+  // projected value — drives the red/green indicator on the dashboard.
+  revenueChanged: boolean;
+  subconCostChanged: boolean;
+  resourcesChanged: boolean;
+  history: FinancialHistoryPoint[]; // weekly snapshots from the Financial History tab
+}
+
+export interface EvmSnapshot {
+  plannedValue: number | null; // PV = Projected Subcon Cost × % time elapsed
+  earnedValue: number | null; // EV = Projected Subcon Cost × % tasks complete
+  actualCost: number | null; // AC = latest Actual Subcon Cost
+  scheduleVariance: number | null; // SV = EV − PV
+  costVariance: number | null; // CV = EV − AC
+  revenueVariance: number | null; // Actual Revenue − (Projected Revenue × % tasks complete)
+}
+
+export interface CriticalChain {
+  deliverableName: string;
+  taskLabels: string[]; // in chain order
+  startDate: string | null; // first task's Baseline Date
+  finishDate: string | null; // last task's Baseline Date
+  slackDays: number | null; // Project End Date − finish date; smaller = more at-risk
+  critical: boolean; // true for the minimum-slack chain(s) in the project
+}
+
+// This is a simplified/derived critical path, NOT a textbook duration-based
+// CPM network: it groups each deliverable's tasks into "chains" (maximal
+// runs of consecutive Dependent-flagged tasks) using the tracker's real
+// Baseline Dates, rather than computing task durations and a dependency
+// graph from scratch. A chain's slack is how many days of buffer it has
+// before the Project End Date; the chain(s) with the least slack are
+// flagged critical. See SHEETS_TRACKER.md.
 
 export type OverallRag = "Red" | "Amber" | "Gray" | "Green" | "Not Started";
 export type SchedulePace = "Ahead" | "On Pace" | "Behind" | "Unknown";
@@ -84,6 +142,9 @@ export interface ProjectSnapshot {
   trackerGenerated: boolean;
   deliverables: DeliverableSnapshot[];
   kpis: ProjectKpis;
+  financials: FinancialSnapshot;
+  evm: EvmSnapshot;
+  criticalChains: CriticalChain[];
 }
 
 export interface ProjectFetchError {
@@ -119,11 +180,11 @@ export async function fetchProjectSnapshot(accessToken: string, sheetIdOrUrl: st
   const auth = buildAuthClient(accessToken);
   const sheets = google.sheets({ version: "v4", auth });
 
-  const [meta, values] = await Promise.all([
+  const [meta, coreValues] = await Promise.all([
     sheets.spreadsheets.get({ spreadsheetId, fields: "properties.title" }),
     sheets.spreadsheets.values.batchGet({
       spreadsheetId,
-      ranges: [`'${EST_SHEET_NAME}'!A1:F1`, `'${TRACK_SHEET_NAME}'!A1:ZZ2000`],
+      ranges: [`'${EST_SHEET_NAME}'!A1:L2`, `'${TRACK_SHEET_NAME}'!A1:ZZ2000`],
       valueRenderOption: "FORMATTED_VALUE",
     }),
   ]);
@@ -131,14 +192,35 @@ export async function fetchProjectSnapshot(accessToken: string, sheetIdOrUrl: st
   const title = meta.data.properties?.title ?? "Untitled Project";
   const name = title.replace(/\s*—\s*Project Plan & Tracker\s*$/, "").trim() || title;
 
-  const estRow = (values.data.valueRanges?.[0]?.values?.[0] ?? []) as unknown[];
-  const startDate = String(estRow[1] ?? "").trim();
-  const endDate = String(estRow[3] ?? "").trim();
-  const buHead = String(estRow[5] ?? "").trim();
+  const estRows = (coreValues.data.valueRanges?.[0]?.values ?? []) as unknown[][];
+  const estRow1 = estRows[0] ?? [];
+  const estRow2 = estRows[1] ?? [];
+  const startDate = String(estRow1[1] ?? "").trim();
+  const endDate = String(estRow1[3] ?? "").trim();
+  const buHead = String(estRow1[5] ?? "").trim();
 
-  const trackRows = (values.data.valueRanges?.[1]?.values ?? []) as unknown[][];
+  const trackRows = (coreValues.data.valueRanges?.[1]?.values ?? []) as unknown[][];
   const { deliverables, trackerGenerated } = parseTrackingRows(trackRows);
   const kpis = computeKpis(deliverables, startDate, endDate);
+
+  // Financial History is only present on trackers generated after this
+  // feature shipped — fetched separately (and swallowed on failure) so an
+  // older tracker without the tab doesn't break the whole dashboard fetch.
+  let historyRows: unknown[][] = [];
+  try {
+    const historyValues = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${FINANCIAL_HISTORY_SHEET_NAME}'!A1:D500`,
+      valueRenderOption: "FORMATTED_VALUE",
+    });
+    historyRows = (historyValues.data.values ?? []) as unknown[][];
+  } catch {
+    historyRows = [];
+  }
+
+  const financials = computeFinancials(estRow1, estRow2, historyRows);
+  const evm = computeEvm(financials, kpis);
+  const criticalChains = computeCriticalPath(deliverables, endDate);
 
   return {
     sheetId: spreadsheetId,
@@ -150,6 +232,9 @@ export async function fetchProjectSnapshot(accessToken: string, sheetIdOrUrl: st
     trackerGenerated,
     deliverables,
     kpis,
+    financials,
+    evm,
+    criticalChains,
   };
 }
 
@@ -168,6 +253,17 @@ function parseTrackingRows(rows: unknown[][]): { deliverables: DeliverableSnapsh
 
   if (slotLabels.length === 0) return { deliverables: [], trackerGenerated: false };
 
+  // The trailing Quality % column sits right after the last task block —
+  // found by its header label (not a fixed offset) so a tracker generated
+  // before this column existed just reports qualityPct: null everywhere.
+  let qualityCol = -1;
+  for (let col = 0; col < header1.length; col++) {
+    if (String(header1[col] ?? "").trim() === QUALITY_HEADER_LABEL) {
+      qualityCol = col;
+      break;
+    }
+  }
+
   const today = startOfDay(new Date());
   const deliverables: DeliverableSnapshot[] = [];
 
@@ -178,6 +274,7 @@ function parseTrackingRows(rows: unknown[][]): { deliverables: DeliverableSnapsh
 
     const rag = String(row[8] ?? "").trim();
     const currentStage = String(row[9] ?? "").trim();
+    const qualityPct = qualityCol >= 0 ? parseNumeric(row[qualityCol]) : null;
     const tasks: TaskSnapshot[] = [];
 
     slotLabels.forEach((label, idx) => {
@@ -194,6 +291,7 @@ function parseTrackingRows(rows: unknown[][]): { deliverables: DeliverableSnapsh
       const baseline = String(row[baseCol + 2] ?? "").trim();
       const plan = String(row[baseCol + 3] ?? "").trim();
       const actual = String(row[baseCol + 4] ?? "").trim();
+      const dependency = String(row[baseCol + 6] ?? "").trim().toLowerCase() === "dependent";
 
       const completed = /^completed/i.test(status);
       const blocked = /^blocked/i.test(status);
@@ -221,10 +319,11 @@ function parseTrackingRows(rows: unknown[][]): { deliverables: DeliverableSnapsh
         overdue,
         onTime,
         upcoming,
+        dependency,
       });
     });
 
-    deliverables.push({ name: delivName, rag, currentStage, tasks });
+    deliverables.push({ name: delivName, rag, currentStage, qualityPct, tasks });
   }
 
   return { deliverables, trackerGenerated: deliverables.length > 0 };
@@ -249,6 +348,18 @@ function parseDateOnly(value: string): Date | null {
   const d = new Date(value);
   if (isNaN(d.getTime())) return null;
   return startOfDay(d);
+}
+
+// Strips currency/thousands formatting (e.g. "1,234.50 ") down to a plain
+// number — needed because Sheets values are fetched with FORMATTED_VALUE.
+function parseNumeric(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null;
+  const str = String(raw).trim();
+  if (str === "") return null;
+  const cleaned = str.replace(/[^0-9.-]/g, "");
+  if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
+  const n = Number(cleaned);
+  return isNaN(n) ? null : n;
 }
 
 // ──────────────────────────── KPI computation ────────────────────────────
@@ -385,6 +496,113 @@ function computeBurndown(allTasks: TaskSnapshot[], start: Date | null, end: Date
   }
 
   return points;
+}
+
+// ────────────────────── Financials, EVM, Critical Path ──────────────────────
+
+// estRow1 = Estimation row 1 (Start/End/BU Head + Projected G-L), estRow2 =
+// row 2 (Actual G-L). Columns: G(6)/H(7) Revenue, I(8)/J(9) Subcon Cost,
+// K(10)/L(11) Resources — label/value pairs, so the value is always the odd
+// index. See lib/googleSheets.ts's column-mapping comment for the source of
+// truth on this layout.
+function computeFinancials(estRow1: unknown[], estRow2: unknown[], historyRows: unknown[][]): FinancialSnapshot {
+  const projectedRevenue = parseNumeric(estRow1[7]);
+  const projectedSubconCost = parseNumeric(estRow1[9]);
+  const projectedResources = parseNumeric(estRow1[11]);
+  const actualRevenue = parseNumeric(estRow2[7]);
+  const actualSubconCost = parseNumeric(estRow2[9]);
+  const actualResources = parseNumeric(estRow2[11]);
+
+  // Only flags a change once an actual value has actually been entered —
+  // an empty Actual cell isn't "no change", it's "not reported yet".
+  const changed = (projected: number | null, actual: number | null): boolean =>
+    projected !== null && actual !== null && Math.round(projected * 100) !== Math.round(actual * 100);
+
+  const history: FinancialHistoryPoint[] = historyRows
+    .slice(1) // header row
+    .map((r) => ({
+      date: String(r[0] ?? "").trim(),
+      actualRevenue: parseNumeric(r[1]),
+      actualSubconCost: parseNumeric(r[2]),
+      actualResources: parseNumeric(r[3]),
+    }))
+    .filter((p) => p.date !== "");
+
+  return {
+    projectedRevenue,
+    projectedSubconCost,
+    projectedResources,
+    actualRevenue,
+    actualSubconCost,
+    actualResources,
+    revenueChanged: changed(projectedRevenue, actualRevenue),
+    subconCostChanged: changed(projectedSubconCost, actualSubconCost),
+    resourcesChanged: changed(projectedResources, actualResources),
+    history,
+  };
+}
+
+function computeEvm(financials: FinancialSnapshot, kpis: ProjectKpis): EvmSnapshot {
+  const { projectedSubconCost, actualSubconCost, projectedRevenue, actualRevenue } = financials;
+  const elapsedFrac = kpis.elapsedPct !== null ? kpis.elapsedPct / 100 : null;
+  const completeFrac = kpis.taskCompletionPct / 100;
+
+  const plannedValue = projectedSubconCost !== null && elapsedFrac !== null ? projectedSubconCost * elapsedFrac : null;
+  const earnedValue = projectedSubconCost !== null ? projectedSubconCost * completeFrac : null;
+  const actualCost = actualSubconCost;
+
+  const scheduleVariance = earnedValue !== null && plannedValue !== null ? earnedValue - plannedValue : null;
+  const costVariance = earnedValue !== null && actualCost !== null ? earnedValue - actualCost : null;
+  const revenueVariance =
+    actualRevenue !== null && projectedRevenue !== null ? actualRevenue - projectedRevenue * completeFrac : null;
+
+  return { plannedValue, earnedValue, actualCost, scheduleVariance, costVariance, revenueVariance };
+}
+
+// Groups each deliverable's tasks into chains — a new chain starts at every
+// Non-dependent task, and consecutive Dependent tasks extend the current
+// chain — then scores each chain's slack against the Project End Date. See
+// the CriticalChain doc comment above for why this is "lite," not textbook
+// CPM.
+function computeCriticalPath(deliverables: DeliverableSnapshot[], endDate: string): CriticalChain[] {
+  const end = parseDateOnly(endDate);
+  const chains: CriticalChain[] = [];
+
+  deliverables.forEach((d) => {
+    let current: TaskSnapshot[] = [];
+    const flush = () => {
+      if (current.length === 0) return;
+      const startTask = current[0];
+      const finishTask = current[current.length - 1];
+      const finishDate = parseDateOnly(finishTask.baseline);
+      const slackDays = end && finishDate ? Math.round((end.getTime() - finishDate.getTime()) / 86400000) : null;
+      chains.push({
+        deliverableName: d.name,
+        taskLabels: current.map((t) => t.slotLabel),
+        startDate: startTask.baseline || null,
+        finishDate: finishTask.baseline || null,
+        slackDays,
+        critical: false, // set below, once every chain's slack is known
+      });
+      current = [];
+    };
+
+    d.tasks.forEach((t) => {
+      if (!t.dependency && current.length > 0) flush();
+      current.push(t);
+    });
+    flush();
+  });
+
+  const knownSlacks = chains.map((c) => c.slackDays).filter((s): s is number => s !== null);
+  if (knownSlacks.length > 0) {
+    const minSlack = Math.min(...knownSlacks);
+    chains.forEach((c) => {
+      if (c.slackDays === minSlack) c.critical = true;
+    });
+  }
+
+  return chains.sort((a, b) => (a.slackDays ?? Infinity) - (b.slackDays ?? Infinity));
 }
 
 // ─────────────────────────── Cross-project rollup ───────────────────────────

@@ -158,6 +158,75 @@ a separate, calendar-scoped control. Because they can be filtered
 independently, it's normal for the two to show different percentages at
 the same time.
 
+## Financials, Schedule/Cost Variance, Critical Path, and Quality
+
+Below the task filter panel on every project tab (not the All Projects
+rollup — these are inherently per-project) are four more sections, all
+read live from fields added to the Estimation tab, the Tracking tab's
+trailing columns, and a new Financial History tab. None of these change
+what's on the sheet — the dashboard only displays what a PM has entered.
+
+### Financials
+
+Shown only once at least one financial figure has been entered — an older
+or still-being-set-up project just skips this section rather than showing
+a wall of dashes.
+
+- **Projected** Revenue, Subcon Cost, and Resources (#) are entered once, at
+  project start, in row 1 of the Estimation & Resource Allocation tab.
+- **Actual** Revenue, Subcon Cost, and Resources (#) are entered in row 2 of
+  the same tab, by the PM, whenever they change — no fixed cadence required.
+- **Financial History** is a dedicated tab that snapshots the Actual row
+  every Monday at 6am automatically (an Apps Script time trigger installed
+  the first time **Generate Project Tracker** is run), stamped with the
+  date — this is what powers a trend view over time, separate from the
+  single current Projected-vs-Actual comparison shown on the dashboard.
+- Each Financials card shows the Projected value plus, once an Actual value
+  exists, a small badge: **On Plan** (green) if Actual still matches
+  Projected, **Changed** (red) if it's drifted — this is the red/green
+  indicator called for when this feature was designed.
+
+### Schedule & Cost Variance (EVM)
+
+A lightweight earned-value view — not a full cost-accounting system —
+shown once Projected Subcon Cost is set:
+
+| Term | Formula | Meaning |
+|---|---|---|
+| Planned Value (PV) | Projected Subcon Cost × % time elapsed | What you planned to have spent by now |
+| Earned Value (EV) | Projected Subcon Cost × % tasks complete | What the work actually done is "worth" against plan |
+| Actual Cost (AC) | Latest Actual Subcon Cost | What's actually been spent |
+| Schedule Variance (SV) | EV − PV | Positive = ahead of schedule, negative = behind |
+| Cost Variance (CV) | EV − AC | Positive = under budget, negative = over budget |
+| Revenue Variance (bonus) | Actual Revenue − (Projected Revenue × % tasks complete) | Positive/negative revenue drift at the current completion level |
+
+### Critical Path (simplified)
+
+**Not a textbook duration-based CPM network** — a lighter-weight view built
+from data already on the sheet:
+
+1. Each task on the Estimation tab has a **Dependency** dropdown —
+   `Non-dependent` (default) or `Dependent` — meaning "depends on the task
+   immediately before it." This copies over automatically when you use the
+   "Copy Tasks from Deliverable 1" checkbox.
+2. Within each deliverable, the dashboard groups tasks into **chains**:
+   every `Non-dependent` task starts a new chain, and consecutive
+   `Dependent` tasks extend the current chain.
+3. Each chain's **slack** = Project End Date − its last task's Baseline
+   Date. The chain(s) with the least slack across the whole project are
+   flagged **Critical**.
+
+Until dependencies are set, every task defaults to its own single-task
+chain — the table is capped to the 15 least-slack chains (sorted most-at-
+risk first) so it stays readable; a note shows how many more exist.
+
+### Quality %
+
+A trailing column on the Project Tracking & Execution tab, one per
+deliverable — entirely PM-entered (0–100), no formula behind it. The
+dashboard's Deliverables table just displays whatever's there; leave it
+blank until you have a number to report.
+
 ## Delivery Calendar
 
 Below the Deliverable Timeline on every tab (per-project, and All Projects

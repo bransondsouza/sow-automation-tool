@@ -363,6 +363,21 @@ button:disabled {
   color: var(--muted);
 }
 
+/* Text-only variance coloring for SV/CV/Revenue Variance KPI cards — reuses
+   the same colors as .rag-red/.rag-green but without a background, since
+   these sit directly in a bold .kpi-value rather than a pill badge. */
+.variance-positive {
+  color: #14532d;
+}
+
+.variance-negative {
+  color: #7f1d1d;
+}
+
+.variance-neutral {
+  color: inherit;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

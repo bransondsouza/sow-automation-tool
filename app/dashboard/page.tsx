@@ -11,6 +11,7 @@ import type {
   SchedulePace,
   StatusCount,
   BurndownPoint,
+  CriticalChain,
 } from "@/lib/dashboardData";
 import type { TooltipItem, ChartTypeRegistry } from "chart.js";
 import type { DashboardLink } from "@/lib/types";
@@ -105,6 +106,191 @@ function KpiCard({
 }
 
 const RAG_ORDER: OverallRag[] = ["Red", "Amber", "Gray", "Green", "Not Started"];
+
+// ─────────────────────── Financials / EVM / Critical Path ───────────────────────
+
+function formatMoney(n: number | null): string {
+  if (n === null) return "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+function formatSigned(n: number | null): string {
+  if (n === null) return "—";
+  const rounded = Math.round(n);
+  return `${rounded > 0 ? "+" : ""}$${rounded.toLocaleString()}`;
+}
+
+function varianceClass(n: number | null): string {
+  if (n === null || n === 0) return "variance-neutral";
+  return n > 0 ? "variance-positive" : "variance-negative";
+}
+
+function FinancialCard({
+  label,
+  projected,
+  actual,
+  changed,
+  isCount,
+}: {
+  label: string;
+  projected: number | null;
+  actual: number | null;
+  changed: boolean;
+  isCount?: boolean;
+}) {
+  const format = (n: number | null) => (n === null ? "—" : isCount ? Math.round(n).toLocaleString() : formatMoney(n));
+  const hasActual = actual !== null;
+  return (
+    <div className="kpi-card">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value">{format(projected)}</div>
+      <div className="kpi-sub">
+        Projected
+        {hasActual && (
+          <>
+            {" · Actual "}
+            {format(actual)}{" "}
+            <span className={`rag-badge ${changed ? "rag-red" : "rag-green"}`}>{changed ? "Changed" : "On Plan"}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Weekly-snapshot-driven financials + a lightweight earned-value view (SV/
+// CV) derived from Projected Subcon Cost, % time elapsed, and % tasks
+// complete. Renders nothing until at least one financial figure has been
+// entered on the Estimation tab — older/incomplete projects just don't show
+// this section rather than displaying a wall of dashes.
+function FinancialsPanel({
+  financials,
+  evm,
+}: {
+  financials: ProjectSnapshot["financials"];
+  evm: ProjectSnapshot["evm"];
+}) {
+  const hasAnyFinancials =
+    financials.projectedRevenue !== null ||
+    financials.projectedSubconCost !== null ||
+    financials.projectedResources !== null ||
+    financials.actualRevenue !== null;
+
+  if (!hasAnyFinancials) return null;
+
+  return (
+    <>
+      <h2 style={{ marginTop: 32 }}>Financials</h2>
+      <p className="hint" style={{ marginTop: -8 }}>
+        Projected values are set once at project start on the Estimation & Resource Allocation tab; Actuals
+        update weekly. Green means Actual still matches Projected — red means it's drifted.
+      </p>
+      <div className="kpi-grid">
+        <FinancialCard
+          label="Revenue"
+          projected={financials.projectedRevenue}
+          actual={financials.actualRevenue}
+          changed={financials.revenueChanged}
+        />
+        <FinancialCard
+          label="Subcon Cost"
+          projected={financials.projectedSubconCost}
+          actual={financials.actualSubconCost}
+          changed={financials.subconCostChanged}
+        />
+        <FinancialCard
+          label="Resources"
+          projected={financials.projectedResources}
+          actual={financials.actualResources}
+          changed={financials.resourcesChanged}
+          isCount
+        />
+      </div>
+
+      {(evm.plannedValue !== null || evm.earnedValue !== null) && (
+        <>
+          <h3 style={{ marginTop: 24 }}>Schedule & Cost Variance (EVM)</h3>
+          <p className="hint" style={{ marginTop: -8 }}>
+            A lightweight earned-value view, not a full cost-accounting system — Planned/Earned Value are
+            derived from Projected Subcon Cost.
+          </p>
+          <div className="kpi-grid">
+            <KpiCard label="Planned Value (PV)" value={formatMoney(evm.plannedValue)} />
+            <KpiCard label="Earned Value (EV)" value={formatMoney(evm.earnedValue)} />
+            <KpiCard label="Actual Cost (AC)" value={formatMoney(evm.actualCost)} />
+            <div className="kpi-card">
+              <div className="kpi-label">Schedule Variance (SV)</div>
+              <div className={`kpi-value ${varianceClass(evm.scheduleVariance)}`}>{formatSigned(evm.scheduleVariance)}</div>
+              <div className="kpi-sub">EV − PV · positive = ahead of schedule</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Cost Variance (CV)</div>
+              <div className={`kpi-value ${varianceClass(evm.costVariance)}`}>{formatSigned(evm.costVariance)}</div>
+              <div className="kpi-sub">EV − AC · positive = under budget</div>
+            </div>
+            {evm.revenueVariance !== null && (
+              <div className="kpi-card">
+                <div className="kpi-label">Revenue Variance</div>
+                <div className={`kpi-value ${varianceClass(evm.revenueVariance)}`}>{formatSigned(evm.revenueVariance)}</div>
+                <div className="kpi-sub">Actual revenue vs. revenue expected at current % complete</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+const CRITICAL_PATH_ROW_CAP = 15;
+
+// A simplified/derived critical path — see CriticalChain's doc comment in
+// lib/dashboardData.ts. Capped to the 15 least-slack chains since every
+// task defaults to "Non-dependent" (its own trivial chain) until a PM
+// opts in, which can otherwise make this a very long, low-signal table.
+function CriticalPathPanel({ chains }: { chains: CriticalChain[] }) {
+  if (chains.length === 0) return null;
+  const shown = chains.slice(0, CRITICAL_PATH_ROW_CAP);
+
+  return (
+    <>
+      <h2 style={{ marginTop: 32 }}>Critical Path (simplified)</h2>
+      <p className="hint" style={{ marginTop: -8 }}>
+        Chains of Dependent-flagged tasks on the Estimation tab, scored by slack against the Project End
+        Date — not a full duration-based CPM network. The chain(s) with the least slack are marked Critical.
+      </p>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Deliverable</th>
+            <th>Task Chain</th>
+            <th>Start</th>
+            <th>Finish</th>
+            <th>Slack (days)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((c, i) => (
+            <tr key={i}>
+              <td>{c.deliverableName}</td>
+              <td>{c.taskLabels.join(" → ")}</td>
+              <td>{c.startDate || "—"}</td>
+              <td>{c.finishDate || "—"}</td>
+              <td>{c.slackDays ?? "—"}</td>
+              <td>{c.critical ? <span className="rag-badge rag-red">Critical</span> : <span className="rag-badge rag-gray">—</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {chains.length > shown.length && (
+        <p className="hint" style={{ marginTop: 4 }}>
+          Showing the {shown.length} least-slack chains of {chains.length} total, sorted most-at-risk first.
+        </p>
+      )}
+    </>
+  );
+}
 
 // ─────────────────────────── Chart data builders ───────────────────────────
 
@@ -1139,7 +1325,15 @@ function ProjectView({
 
           <TaskFilterPanel projects={[project]} filters={filters} onClear={clearFilter} showProject={false} />
 
+          <FinancialsPanel financials={project.financials} evm={project.evm} />
+
+          <CriticalPathPanel chains={project.criticalChains} />
+
           <h2 style={{ marginTop: 32 }}>Deliverables</h2>
+          <p className="hint" style={{ marginTop: -8 }}>
+            Quality % is entered directly on the Project Tracking & Execution tab's trailing column — this
+            dashboard only displays it.
+          </p>
           <table className="data-table">
             <thead>
               <tr>
@@ -1147,6 +1341,7 @@ function ProjectView({
                 <th>RAG</th>
                 <th>Current Stage</th>
                 <th>Tasks Completed</th>
+                <th>Quality %</th>
               </tr>
             </thead>
             <tbody>
@@ -1158,6 +1353,7 @@ function ProjectView({
                   <td>
                     {d.tasks.filter((t) => t.completed).length} / {d.tasks.length}
                   </td>
+                  <td>{d.qualityPct !== null ? `${d.qualityPct}%` : "—"}</td>
                 </tr>
               ))}
             </tbody>

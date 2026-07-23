@@ -4,10 +4,12 @@ import { SOWData } from "./types";
 const ESTIMATION_SHEET_ID = 0;
 const TRACKING_SHEET_ID = 1;
 const LISTS_SHEET_ID = 2;
+const FINANCIAL_HISTORY_SHEET_ID = 3;
 
 const ESTIMATION_SHEET_NAME = "Estimation & Resource Allocation";
 const TRACKING_SHEET_NAME = "Project Tracking & Execution";
 const LISTS_SHEET_NAME = "Lists";
+const FINANCIAL_HISTORY_SHEET_NAME = "Financial History";
 
 const BUFFER_ROWS = 10; // extra blank template rows so PMs can add tasks/deliverables later
 const ESTIMATION_HEADER_ROW = 4; // 1-indexed row the column headers sit on
@@ -15,7 +17,10 @@ const ESTIMATION_FIRST_TASK_ROW = 5;
 const CHECKBOX_ROWS = 300; // how far down column H is pre-formatted as a checkbox
 
 // Estimation & Resource Allocation task-table columns (from row 4 down).
-// Row 1-3 (project dates, BU head, notes) use columns independently of these.
+// Row 1-2 (project dates, BU head, financials) use columns independently of
+// these — same column letters mean different things on those header rows,
+// same pattern already used for column F (Business Unit Head on row 1 vs.
+// Effort per Member on row 4+).
 const EST_COL = {
   DELIVERABLE: "A",
   TASK: "B",
@@ -25,7 +30,10 @@ const EST_COL = {
   EFFORT_PER_MEMBER: "F",
   NOTES: "G",
   COPY: "H",
+  DEPENDENCY: "I",
 };
+
+const DEPENDENCY_OPTIONS = ["Non-dependent", "Dependent"];
 
 // Resource Allocation Summary now lives to the right of the task table
 // (see point 4) so it doesn't get pushed further down as more deliverables
@@ -63,23 +71,33 @@ export interface GeneratedSheet {
 }
 
 /**
- * Builds the 3-tab Project Plan & Tracker spreadsheet:
+ * Builds the 4-tab Project Plan & Tracker spreadsheet:
  *  1. Estimation & Resource Allocation — one row per task, grouped into
  *     deliverables (a "Deliverable Name" in column A starts a new group;
  *     leaving it blank means "same deliverable as the row above"). A
  *     checkbox in column H duplicates Deliverable 1's full task list into a
- *     newly-named deliverable. A live resource-allocation summary sits to
- *     the right of the task table and updates itself the moment a name is
- *     added to the Lists tab — no regeneration needed.
+ *     newly-named deliverable, including the new Dependency column (I) — a
+ *     Dependent/Non-dependent flag per task that feeds the dashboard's
+ *     simplified critical-path view. A live resource-allocation summary
+ *     sits to the right of the task table and updates itself the moment a
+ *     name is added to the Lists tab — no regeneration needed. Row 1-2 also
+ *     carry the project's Projected (row 1) and current Actual (row 2)
+ *     Revenue/Subcon Cost/Resource-count figures — see "Financial History"
+ *     below for how Actual values get logged over time.
  *  2. Project Tracking & Execution — starts empty. The PM fills in Sheet 1,
  *     then uses Project Tracker Tools ▸ Generate Project Tracker (installed
  *     by lib/googleAppsScript.ts) to build this as a Deliverable × Task
  *     matrix: one row per deliverable, RAG status + current stage, and a
  *     repeating block of columns per task (Assigned To, Hours, Baseline
- *     Date, Plan Date, Actual Date, Status). Re-running it preserves any
- *     Plan/Actual/Assigned/Hours/Status already entered. See
+ *     Date, Plan Date, Actual Date, Status, Dependency), plus a trailing
+ *     Quality % column per deliverable. Re-running it preserves any
+ *     Plan/Actual/Assigned/Hours/Status/Quality already entered. See
  *     SHEETS_TRACKER.md for the full explanation.
  *  3. Lists (hidden) — the editable source lists behind every dropdown.
+ *  4. Financial History — an append-only log (Date, Actual Revenue, Actual
+ *     Subcon Cost, Actual Resources) that a weekly Apps Script time trigger
+ *     writes to automatically, snapshotting whatever the Estimation tab's
+ *     current Actual values say at that moment.
  */
 export async function generateProjectSheet(
   accessToken: string,
@@ -121,6 +139,13 @@ export async function generateProjectSheet(
             hidden: true,
           },
         },
+        {
+          properties: {
+            sheetId: FINANCIAL_HISTORY_SHEET_ID,
+            title: FINANCIAL_HISTORY_SHEET_NAME,
+            gridProperties: { frozenRowCount: 1 },
+          },
+        },
       ],
     },
   });
@@ -140,6 +165,7 @@ export async function generateProjectSheet(
         { range: `'${ESTIMATION_SHEET_NAME}'!${SUMMARY_COL.NAME}${SUMMARY_HEADER_ROW}`, values: buildResourceSummaryValues() },
         { range: `'${TRACKING_SHEET_NAME}'!A1`, values: buildTrackingPlaceholderValues() },
         { range: `'${LISTS_SHEET_NAME}'!A1`, values: buildListsValues(teamRoster) },
+        { range: `'${FINANCIAL_HISTORY_SHEET_NAME}'!A1`, values: buildFinancialHistoryValues() },
       ],
     },
   });
@@ -152,6 +178,8 @@ export async function generateProjectSheet(
         ...headerFormattingRequests(),
         ...dateFormattingRequests(),
         ...checkboxValidationRequests(),
+        ...dependencyValidationRequests(),
+        ...financialFormattingRequests(),
         ...columnWidthRequests(),
       ],
     },
@@ -169,13 +197,37 @@ function buildEstimationValues(data: SOWData, totalTaskRows: number, buHead?: Bu
   const buHeadLabel = buHead ? `${buHead.name} <${buHead.email}>` : "";
 
   const rows: unknown[][] = [
-    ["Project Start Date:", "", "Project End Date:", "", "Business Unit Head:", buHeadLabel],
+    // Row 1 — project dates/BU head (A-F) plus the PLANNED financial baseline
+    // (G-L), set once at project start.
+    [
+      "Project Start Date:",
+      "",
+      "Project End Date:",
+      "",
+      "Business Unit Head:",
+      buHeadLabel,
+      "Projected Revenue ($):",
+      "",
+      "Projected Subcon Cost ($):",
+      "",
+      "Projected Resources (#):",
+      "",
+    ],
+    // Row 2 — the instructional note (A) plus the CURRENT ACTUAL financial
+    // values (G-L) — these are what the PM updates as reality changes, and
+    // what the weekly snapshot trigger reads from (see lib/googleAppsScript.ts).
     [
       "(fill in below — every deliverable's schedule cascades from Project Start Date, so set this first)",
       "",
       "",
       "",
       "",
+      "",
+      "Actual Revenue ($):",
+      "",
+      "Actual Subcon Cost ($):",
+      "",
+      "Actual Resources (#):",
       "",
     ],
     [],
@@ -188,6 +240,7 @@ function buildEstimationValues(data: SOWData, totalTaskRows: number, buHead?: Bu
       "Effort per Member (Hrs)",
       "Notes",
       "Copy Tasks from Deliverable 1",
+      "Dependency",
     ],
   ];
 
@@ -204,10 +257,17 @@ function buildEstimationValues(data: SOWData, totalTaskRows: number, buHead?: Bu
     const taskName = item ? item.milestone : "";
     const notes = item && (item.start || item.end) ? `SOW timing: ${item.start} → ${item.end}` : item?.notes ?? "";
     const effortFormula = `=IF(OR(${EST_COL.EFFORT}${row}="",${EST_COL.TEAM}${row}=""),"",${EST_COL.EFFORT}${row}/COUNTA(SPLIT(${EST_COL.TEAM}${row},",")))`;
-    rows.push([name, taskName, "", "", "", effortFormula, notes]);
+    // Dependency defaults to Non-dependent — a PM opts a task INTO a
+    // dependency chain rather than the tool assuming every task blocks the
+    // next one, which would otherwise manufacture a fake critical path.
+    rows.push([name, taskName, "", "", "", effortFormula, notes, "", DEPENDENCY_OPTIONS[0]]);
   }
 
   return rows;
+}
+
+function buildFinancialHistoryValues(): unknown[][] {
+  return [["Date", "Actual Revenue ($)", "Actual Subcon Cost ($)", "Actual Resources (#)"]];
 }
 
 function buildResourceSummaryValues(): unknown[][] {
@@ -273,17 +333,26 @@ function headerFormattingRequests(): sheets_v4.Schema$Request[] {
 
   return [
     {
-      // Estimation task-table header, row 4, columns A-H
+      // Estimation task-table header, row 4, columns A-I (now includes Dependency)
       repeatCell: {
-        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: ESTIMATION_HEADER_ROW - 1, endRowIndex: ESTIMATION_HEADER_ROW, startColumnIndex: 0, endColumnIndex: 8 },
+        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: ESTIMATION_HEADER_ROW - 1, endRowIndex: ESTIMATION_HEADER_ROW, startColumnIndex: 0, endColumnIndex: 9 },
         cell: bold,
         fields: "userEnteredFormat(textFormat,backgroundColor)",
       },
     },
     {
-      // Row 1 labels: Project Start Date / Project End Date / Business Unit Head
+      // Row 1 labels: Project Start/End Date, BU Head, Projected financials (A-L)
       repeatCell: {
-        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 6 },
+        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 12 },
+        cell: { userEnteredFormat: { textFormat: { bold: true } } },
+        fields: "userEnteredFormat(textFormat)",
+      },
+    },
+    {
+      // Row 2 Actual-financials labels (G-L) — the instructional note in A2
+      // stays unbolded, so this only covers the new columns.
+      repeatCell: {
+        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 6, endColumnIndex: 12 },
         cell: { userEnteredFormat: { textFormat: { bold: true } } },
         fields: "userEnteredFormat(textFormat)",
       },
@@ -301,6 +370,14 @@ function headerFormattingRequests(): sheets_v4.Schema$Request[] {
         range: { sheetId: LISTS_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 2 },
         cell: { userEnteredFormat: { textFormat: { bold: true }, wrapStrategy: "WRAP" } },
         fields: "userEnteredFormat(textFormat,wrapStrategy)",
+      },
+    },
+    {
+      // Financial History header row
+      repeatCell: {
+        range: { sheetId: FINANCIAL_HISTORY_SHEET_ID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 4 },
+        cell: bold,
+        fields: "userEnteredFormat(textFormat,backgroundColor)",
       },
     },
   ];
@@ -363,6 +440,61 @@ function checkboxValidationRequests(): sheets_v4.Schema$Request[] {
   ];
 }
 
+function dependencyValidationRequests(): sheets_v4.Schema$Request[] {
+  return [
+    {
+      // Pre-format column I (Dependency) as a dropdown for the same row range
+      // the checkbox column is pre-formatted for, so it's ready for every
+      // deliverable a PM might add without waiting for anything to run.
+      setDataValidation: {
+        range: { sheetId: ESTIMATION_SHEET_ID, startRowIndex: ESTIMATION_FIRST_TASK_ROW - 1, endRowIndex: ESTIMATION_FIRST_TASK_ROW - 1 + CHECKBOX_ROWS, startColumnIndex: 8, endColumnIndex: 9 },
+        rule: {
+          condition: { type: "ONE_OF_LIST", values: DEPENDENCY_OPTIONS.map((v) => ({ userEnteredValue: v })) },
+          strict: true,
+          showCustomUi: true,
+        },
+      },
+    },
+  ];
+}
+
+function financialFormattingRequests(): sheets_v4.Schema$Request[] {
+  const currencyFormat = { numberFormat: { type: "NUMBER", pattern: '#,##0.00" "' } };
+  const wholeNumberFormat = { numberFormat: { type: "NUMBER", pattern: "#,##0" } };
+  const nonNegativeValidation = { condition: { type: "NUMBER_GREATER_THAN_OR_EQUAL", values: [{ userEnteredValue: "0" }] }, strict: false, showCustomUi: true };
+
+  // Value cells: H1/J1/L1 (Projected Revenue/Subcon Cost/Resources),
+  // H2/J2/L2 (Actual Revenue/Subcon Cost/Resources). Revenue and Subcon Cost
+  // get a currency-style number format; Resources (a headcount) gets a plain
+  // whole-number format.
+  const currencyCells = [
+    { row: 0, col: 7 }, // H1
+    { row: 0, col: 9 }, // J1
+    { row: 1, col: 7 }, // H2
+    { row: 1, col: 9 }, // J2
+  ];
+  const resourceCountCells = [
+    { row: 0, col: 11 }, // L1
+    { row: 1, col: 11 }, // L2
+  ];
+
+  const requests: sheets_v4.Schema$Request[] = [];
+
+  currencyCells.forEach(({ row, col }) => {
+    const range = { sheetId: ESTIMATION_SHEET_ID, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: col, endColumnIndex: col + 1 };
+    requests.push({ repeatCell: { range, cell: { userEnteredFormat: currencyFormat }, fields: "userEnteredFormat.numberFormat" } });
+    requests.push({ setDataValidation: { range, rule: nonNegativeValidation } });
+  });
+
+  resourceCountCells.forEach(({ row, col }) => {
+    const range = { sheetId: ESTIMATION_SHEET_ID, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: col, endColumnIndex: col + 1 };
+    requests.push({ repeatCell: { range, cell: { userEnteredFormat: wholeNumberFormat }, fields: "userEnteredFormat.numberFormat" } });
+    requests.push({ setDataValidation: { range, rule: nonNegativeValidation } });
+  });
+
+  return requests;
+}
+
 function columnWidthRequests(): sheets_v4.Schema$Request[] {
   return [
     {
@@ -395,8 +527,22 @@ function columnWidthRequests(): sheets_v4.Schema$Request[] {
     },
     {
       updateDimensionProperties: {
+        range: { sheetId: ESTIMATION_SHEET_ID, dimension: "COLUMNS", startIndex: 8, endIndex: 9 },
+        properties: { pixelSize: 130 },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
         range: { sheetId: TRACKING_SHEET_ID, dimension: "COLUMNS", startIndex: 0, endIndex: 1 },
         properties: { pixelSize: 190 },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId: FINANCIAL_HISTORY_SHEET_ID, dimension: "COLUMNS", startIndex: 0, endIndex: 4 },
+        properties: { pixelSize: 170 },
         fields: "pixelSize",
       },
     },
